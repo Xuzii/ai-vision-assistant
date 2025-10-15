@@ -36,7 +36,9 @@ except ImportError:
     sys.path.insert(0, str(core_dir))
     from database_setup import hash_password, verify_password
 
-app = Flask(__name__)
+# Configure Flask to use templates from project root
+template_dir = Path(__file__).parent.parent.parent / 'templates'
+app = Flask(__name__, template_folder=str(template_dir))
 app.secret_key = os.getenv('FLASK_SECRET_KEY', secrets.token_hex(32))
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
 
