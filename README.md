@@ -26,12 +26,17 @@ cp config.example.json config.json  # Add camera details
 # 3. Initialize
 python src/core/database_setup.py
 
-# 4. Run
-python src/core/camera_manager.py  # Terminal 1: Auto-tracking
-python src/web/dashboard.py        # Terminal 2: Web dashboard
+# 4. Run (single command starts everything)
+python start.py
 ```
 
 Open **http://localhost:8000** 🎉
+
+**Alternative:** Run components separately:
+```bash
+python src/core/camera_manager.py  # Terminal 1: Auto-tracking
+python src/web/dashboard.py        # Terminal 2: Web dashboard
+```
 
 ---
 
@@ -58,6 +63,7 @@ ai-vision-assistant/
 ├── docs/                  # Documentation
 │   ├── README.md                # Complete guide
 │   └── QUICK_REFERENCE.md       # Quick commands
+├── start.py               # Convenience launcher (starts everything)
 ├── config.example.json    # Configuration template
 ├── .env.example          # Environment variables template
 └── requirements.txt      # Python dependencies

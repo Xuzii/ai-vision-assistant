@@ -93,7 +93,7 @@ Edit `config.json`:
 ### Step 4: Test Camera Connection
 
 ```bash
-python test_camera.py --ip 192.168.10.38 --username admin --password YOUR_PASSWORD
+python scripts/test_camera.py --ip 192.168.10.38 --username admin --password YOUR_PASSWORD
 ```
 
 ✅ If successful, you'll get a `test_frame.jpg` showing your camera view.
@@ -101,21 +101,28 @@ python test_camera.py --ip 192.168.10.38 --username admin --password YOUR_PASSWO
 ### Step 5: Initialize Database
 
 ```bash
-python database_setup.py
+python src/core/database_setup.py
 ```
 
 💡 Save the admin password shown in the console!
 
 ### Step 6: Start The System
 
+**Easy way** (single command starts everything):
+```bash
+python start.py
+```
+
+**Or run components separately:**
+
 **Terminal 1 - Camera Manager** (auto-tracking):
 ```bash
-python camera_manager.py
+python src/core/camera_manager.py
 ```
 
 **Terminal 2 - Dashboard** (web interface):
 ```bash
-python dashboard.py
+python src/web/dashboard.py
 ```
 
 ### Step 7: Open Dashboard
@@ -216,7 +223,7 @@ Activities are automatically categorized:
 ### Voice Assistant (Optional)
 
 ```bash
-python voice_assistant.py
+python src/core/voice_assistant.py
 ```
 
 Ask questions about your activities:
@@ -246,7 +253,7 @@ Access your dashboard from anywhere securely using Tailscale VPN.
 
 4. **Start dashboard** (must bind to 0.0.0.0 - already configured!)
    ```bash
-   python dashboard.py
+   python start.py
    ```
 
 5. **Access from phone**
@@ -319,7 +326,7 @@ The dashboard is fully optimized for mobile:
 
 **Find camera IP:**
 ```bash
-python find_camera.py
+python scripts/find_camera.py
 ```
 
 ### Dashboard Won't Start
@@ -341,7 +348,7 @@ pip install -r requirements.txt
 python --version  # Should be 3.11+
 
 # If wrong version, use specific Python
-python3.11 dashboard.py
+python3.11 start.py
 ```
 
 ### Can't Access from Phone
@@ -380,20 +387,30 @@ python3.11 dashboard.py
 
 ```
 ai-vision-assistant/
-├── camera_manager.py      # Auto-captures & analyzes frames
-├── dashboard.py           # Web interface (Flask)
-├── voice_assistant.py     # Voice query interface
-├── database_setup.py      # Initialize database & users
-├── test_camera.py         # Test camera connection
-├── find_camera.py         # Scan network for cameras
+├── src/
+│   ├── core/              # Core functionality
+│   │   ├── camera_manager.py    # Auto-captures & analyzes frames
+│   │   ├── database_setup.py    # Initialize database & users
+│   │   ├── voice_assistant.py   # Voice query interface
+│   │   └── stream_server.py     # Video streaming
+│   └── web/               # Web interface
+│       └── dashboard.py         # Flask dashboard
+├── scripts/               # Utility scripts
+│   ├── test_camera.py           # Test camera connection
+│   ├── find_camera.py           # Scan network for cameras
+│   └── generate_realistic_data.py  # Test data generator
+├── templates/             # HTML templates
+│   ├── dashboard_modern.html    # Main dashboard UI
+│   └── login.html               # Login page
+├── docs/                  # Documentation
+│   ├── README.md                # Complete guide (this file)
+│   └── QUICK_REFERENCE.md       # Quick commands
+├── start.py               # Convenience launcher (starts everything)
 ├── config.json            # Camera & system config
 ├── .env                   # OpenAI API key
 ├── requirements.txt       # Python dependencies
 ├── activities.db          # SQLite database (created on first run)
-├── frames/                # Captured images (created on first run)
-└── templates/
-    ├── dashboard_modern.html  # Main dashboard UI
-    └── login.html             # Login page
+└── frames/                # Captured images (created on first run)
 ```
 
 ---
@@ -432,9 +449,9 @@ ai-vision-assistant/
 ## 🆘 Support
 
 **Common Issues:**
-- Camera problems → Run `test_camera.py`
-- Can't find camera → Run `find_camera.py`
-- Database issues → Delete `activities.db` and run `database_setup.py`
+- Camera problems → Run `python scripts/test_camera.py`
+- Can't find camera → Run `python scripts/find_camera.py`
+- Database issues → Delete `activities.db` and run `python src/core/database_setup.py`
 - API errors → Check `.env` has valid OpenAI key
 
 **Need Help?**
