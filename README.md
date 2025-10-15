@@ -122,8 +122,9 @@ ai-vision-assistant/
 
 ## 📸 Screenshots
 
-![Preview][images/dashboard_today.png]
-![Preview][images/dashboard_7day.png]
+![dashboard_7day](https://github.com/user-attachments/assets/0c895519-41fa-40b6-884a-a33bbe318f3a)
+![dashboard_today](https://github.com/user-attachments/assets/d037201a-46a6-4711-a3c9-84efbdbf9c75)
+
 
 ---
 
