@@ -122,7 +122,8 @@ ai-vision-assistant/
 
 ## 📸 Screenshots
 
-*Coming soon - check out the dashboard at http://localhost:8000*
+![Preview][images/dashboard_today.png]
+![Preview][images/dashboard_7day.png]
 
 ---
 
