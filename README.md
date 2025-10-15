@@ -32,6 +32,14 @@ python start.py
 
 Open **http://localhost:8000** 🎉
 
+**Interactive Management:**
+- Press `Ctrl+C` to open management menu
+- `1` - Restart Camera Manager
+- `2` - Restart Dashboard
+- `3` - Restart Both
+- `4` - Check Status
+- `5` - Stop All & Exit
+
 **Alternative:** Run components separately:
 ```bash
 python src/core/camera_manager.py  # Terminal 1: Auto-tracking
@@ -74,13 +82,16 @@ ai-vision-assistant/
 ## ✨ Features
 
 - ✅ **Person-focused tracking** - WHERE they are + WHAT they're doing
-- ✅ **Apple-style analytics** - Stacked bar charts by category
-- ✅ **Live camera streaming** - No refresh needed
-- ✅ **Mobile optimized** - Touch-friendly responsive design
+- ✅ **Apple Screen Time-style analytics** - Beautiful stacked bar charts
+- ✅ **Interactive process manager** - Restart services without stopping everything
+- ✅ **Mobile optimized** - Touch-friendly responsive design, perfect on phones
+- ✅ **Smart cost controls** - Daily API cap ($2/day) prevents runaway charges
+- ✅ **Live camera streaming** - Real-time MJPEG feeds
 - ✅ **Secure remote access** - Tailscale VPN support
-- ✅ **Token tracking** - Accurate cost monitoring
-- ✅ **Voice queries** - Ask about your activities
-- ✅ **Auto-categorization** - Productivity, Health, Entertainment, etc.
+- ✅ **Token tracking** - Accurate cost monitoring per activity
+- ✅ **Voice queries** - Ask about your activities (optional)
+- ✅ **Auto-categorization** - Productivity, Health, Entertainment, Social, Other
+- ✅ **Robust reconnection** - Exponential backoff for camera failures
 
 ---
 
