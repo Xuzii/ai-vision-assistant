@@ -28,7 +28,13 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 # Import password utilities from database_setup to avoid duplication
-from src.core.database_setup import hash_password, verify_password
+try:
+    from src.core.database_setup import hash_password, verify_password
+except ImportError:
+    # Fallback: add core directory and import directly
+    core_dir = Path(__file__).parent.parent / 'core'
+    sys.path.insert(0, str(core_dir))
+    from database_setup import hash_password, verify_password
 
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', secrets.token_hex(32))
@@ -544,7 +550,10 @@ if __name__ == '__main__':
     print("="*60)
 
     # Setup database
-    from src.core.database_setup import setup_database
+    try:
+        from src.core.database_setup import setup_database
+    except ImportError:
+        from database_setup import setup_database
     setup_database()
 
     local_ip = get_local_ip()
