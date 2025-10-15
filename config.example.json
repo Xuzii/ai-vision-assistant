@@ -1,0 +1,24 @@
+{
+  "cameras": [
+    {
+      "name": "living_room",
+      "rtsp_url": "rtsp://username:password@192.168.1.100:554/h264Preview_01_main",
+      "active_hours": {
+        "start": "08:00",
+        "end": "22:00"
+      },
+      "capture_interval_minutes": 15
+    }
+  ],
+  "database": {
+    "path": "activities.db"
+  },
+  "openai": {
+    "tracking_model": "gpt-4o-mini",
+    "voice_model": "gpt-4o",
+    "whisper_model": "whisper-1",
+    "tts_model": "tts-1",
+    "tts_voice": "alloy"
+  },
+  "frames_directory": "frames"
+}

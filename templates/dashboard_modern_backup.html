@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Life Tracking Dashboard</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif;
+            background: #f4f6f9;
+            color: #1a1a1a;
+        }
+
+        /* Top Bar */
+        .topbar {
+            background: white;
+            padding: 16px 32px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        }
+
+        .topbar-left {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+        }
+
+        .time-display {
+            font-size: 32px;
+            font-weight: 300;
+            color: #1a1a1a;
+        }
+
+        .date-display {
+            font-size: 13px;
+            color: #6b7280;
+            margin-top: -4px;
+        }
+
+        .topbar-right {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 16px;
+            background: #f4f6f9;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+
+        .avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+        }
+
+        .logout-btn {
+            padding: 8px 16px;
+            background: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: background 0.2s;
+        }
+
+        .logout-btn:hover {
+            background: #dc2626;
+        }
+
+        /* Main Layout */
+        .container {
+            display: flex;
+            padding: 24px;
+            gap: 24px;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 200px;
+            flex-shrink: 0;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            margin-bottom: 4px;
+            border-radius: 12px;
+            color: #6b7280;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .nav-item:hover {
+            background: white;
+            color: #1a1a1a;
+        }
+
+        .nav-item.active {
+            background: white;
+            color: #667eea;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+
+        .nav-icon {
+            font-size: 18px;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            min-height: calc(100vh - 140px);
+        }
+
+        .page {
+            display: none;
+        }
+
+        .page.active {
+            display: block;
+        }
+
+        /* Screen Time Card */
+        .screen-time-card {
+            background: white;
+            border-radius: 20px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            margin-bottom: 24px;
+        }
+
+        .screen-time-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .screen-time-tabs {
+            display: flex;
+            background: #f3f4f6;
+            border-radius: 10px;
+            padding: 4px;
+        }
+
+        .screen-time-tab {
+            padding: 6px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+            background: transparent;
+            color: #6b7280;
+            font-weight: 500;
+        }
+
+        .screen-time-tab.active {
+            background: white;
+            color: #667eea;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .daily-average {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        .average-time {
+            font-size: 48px;
+            font-weight: 300;
+            color: #1a1a1a;
+            margin-bottom: 4px;
+        }
+
+        .average-label {
+            font-size: 14px;
+            color: #6b7280;
+        }
+
+        .comparison {
+            font-size: 13px;
+            color: #10b981;
+            margin-top: 4px;
+        }
+
+        .comparison.down {
+            color: #ef4444;
+        }
+
+        /* Bar Chart */
+        .bar-chart {
+            height: 120px;
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            margin-bottom: 32px;
+            padding: 0 4px;
+        }
+
+        .bar {
+            flex: 1;
+            max-width: 40px;
+            background: linear-gradient(180deg, #667eea 0%, #93c5fd 100%);
+            border-radius: 4px 4px 0 0;
+            position: relative;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .bar:hover {
+            background: linear-gradient(180deg, #764ba2 0%, #667eea 100%);
+        }
+
+        .bar-label {
+            position: absolute;
+            bottom: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 11px;
+            color: #9ca3af;
+            white-space: nowrap;
+        }
+
+        /* Activity List */
+        .activity-breakdown {
+            margin-top: 24px;
+        }
+
+        .breakdown-item {
+            display: flex;
+            align-items: center;
+            padding: 16px;
+            background: #f9fafb;
+            border-radius: 12px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .breakdown-item:hover {
+            background: #f3f4f6;
+        }
+
+        .breakdown-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            margin-right: 16px;
+        }
+
+        .breakdown-icon.orange { background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); }
+        .breakdown-icon.red { background: linear-gradient(135deg, #fecaca 0%, #fca5a5 100%); }
+        .breakdown-icon.blue { background: linear-gradient(135deg, #dbeafe 0%, #93c5fd 100%); }
+        .breakdown-icon.green { background: linear-gradient(135deg, #d1fae5 0%, #6ee7b7 100%); }
+        .breakdown-icon.purple { background: linear-gradient(135deg, #e9d5ff 0%, #c084fc 100%); }
+
+        .breakdown-info {
+            flex: 1;
+        }
+
+        .breakdown-name {
+            font-size: 15px;
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-bottom: 4px;
+        }
+
+        .breakdown-detail {
+            font-size: 13px;
+            color: #6b7280;
+        }
+
+        .breakdown-time {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-right: 8px;
+        }
+
+        .breakdown-arrow {
+            color: #9ca3af;
+        }
+
+        /* Room Cards Grid */
+        .rooms-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .room-card {
+            background: white;
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: pointer;
+        }
+
+        .room-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+        }
+
+        .room-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 40px;
+        }
+
+        .room-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+
+        .room-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #10b981;
+        }
+
+        .room-icon-circle {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            margin: 0 auto 16px;
+        }
+
+        .room-card.orange .room-icon-circle {
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+        }
+
+        .room-card.red .room-icon-circle {
+            background: linear-gradient(135deg, #fecaca 0%, #fca5a5 100%);
+        }
+
+        .room-card.blue .room-icon-circle {
+            background: linear-gradient(135deg, #dbeafe 0%, #93c5fd 100%);
+        }
+
+        .room-card.green .room-icon-circle {
+            background: linear-gradient(135deg, #d1fae5 0%, #6ee7b7 100%);
+        }
+
+        .room-stats {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 16px;
+            border-top: 1px solid #f4f6f9;
+        }
+
+        .room-activity {
+            font-size: 12px;
+            color: #6b7280;
+        }
+
+        .room-count {
+            font-size: 16px;
+            font-weight: 700;
+            color: #1a1a1a;
+        }
+
+        /* Activity Section */
+        .activity-section {
+            background: white;
+            border-radius: 20px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            margin-bottom: 24px;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #1a1a1a;
+        }
+
+        .activity-item {
+            padding: 16px;
+            background: #f9fafb;
+            border-radius: 12px;
+            margin-bottom: 12px;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .activity-item:hover {
+            background: #f3f4f6;
+            transform: translateX(4px);
+        }
+
+        .activity-time {
+            font-size: 12px;
+            color: #9ca3af;
+            margin-bottom: 4px;
+        }
+
+        .activity-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-bottom: 4px;
+        }
+
+        .activity-desc {
+            font-size: 13px;
+            color: #6b7280;
+        }
+
+        /* Calendar, Camera, Modal styles... (keeping existing) */
+        #calendar {
+            background: white;
+            padding: 24px;
+            border-radius: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+
+        .fc { border: none; }
+        .fc-button {
+            background: #667eea !important;
+            border: none !important;
+            border-radius: 8px !important;
+            padding: 8px 16px !important;
+            font-weight: 500 !important;
+        }
+
+        .camera-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .camera-card {
+            background: white;
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+
+        .camera-img {
+            width: 100%;
+            border-radius: 12px;
+            background: #f3f4f6;
+            min-height: 200px;
+        }
+
+        .camera-btn {
+            width: 100%;
+            margin-top: 12px;
+            padding: 12px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active { display: flex; }
+
+        .modal-content {
+            background: white;
+            border-radius: 20px;
+            padding: 32px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #9ca3af;
+        }
+
+        .spinner {
+            border: 3px solid #f3f4f6;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 968px) {
+            .container { flex-direction: column; }
+            .sidebar {
+                width: 100%;
+                display: flex;
+                overflow-x: auto;
+                gap: 8px;
+            }
+            .rooms-grid {
+                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Top Bar -->
+    <div class="topbar">
+        <div class="topbar-left">
+            <div>
+                <div class="time-display" id="current-time">10:39</div>
+                <div class="date-display" id="current-date">Wednesday, February 22, 2023</div>
+            </div>
+        </div>
+        <div class="topbar-right">
+            <div class="user-info">
+                <div class="avatar">{{ username[0].upper() }}</div>
+                <span>{{ username }}</span>
+            </div>
+            <a href="/logout" class="logout-btn">Logout</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Sidebar Navigation -->
+        <div class="sidebar">
+            <div class="nav-item active" data-page="overview">
+                <span class="nav-icon">🏠</span>
+                <span>Overview</span>
+            </div>
+            <div class="nav-item" data-page="timeline">
+                <span class="nav-icon">📝</span>
+                <span>Timeline</span>
+            </div>
+            <div class="nav-item" data-page="calendar">
+                <span class="nav-icon">📅</span>
+                <span>Calendar</span>
+            </div>
+            <div class="nav-item" data-page="cameras">
+                <span class="nav-icon">📹</span>
+                <span>Cameras</span>
+            </div>
+            <div class="nav-item" data-page="settings">
+                <span class="nav-icon">⚙️</span>
+                <span>Settings</span>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Overview Page -->
+            <div id="overview" class="page active">
+                <!-- Screen Time Card -->
+                <div class="screen-time-card">
+                    <div class="screen-time-header">
+                        <div class="section-title" style="margin: 0;">Activity Summary</div>
+                        <div class="screen-time-tabs">
+                            <button class="screen-time-tab active" data-period="today">Today</button>
+                            <button class="screen-time-tab" data-period="week">Last 7 Days</button>
+                        </div>
+                    </div>
+
+                    <div class="daily-average">
+                        <div class="average-time" id="avg-activities">-</div>
+                        <div class="average-label">Activities Captured</div>
+                        <div class="comparison" id="avg-comparison">-</div>
+                    </div>
+
+                    <div class="bar-chart" id="hourly-chart">
+                        <!-- Bars will be dynamically inserted -->
+                    </div>
+
+                    <div class="activity-breakdown" id="activity-breakdown">
+                        <!-- Activity breakdown will be dynamically inserted -->
+                    </div>
+                </div>
+
+                <!-- Room Cards -->
+                <div class="rooms-grid" id="rooms-grid">
+                    <!-- Room cards will be dynamically inserted -->
+                </div>
+
+                <!-- Recent Activities -->
+                <div class="activity-section">
+                    <div class="section-title">Recent Activities</div>
+                    <div id="recent-activities">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            <p>Loading activities...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Timeline Page -->
+            <div id="timeline" class="page">
+                <div class="activity-section">
+                    <div class="section-title">Activity Timeline</div>
+                    <div style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
+                        <input type="date" id="filter-from" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px;">
+                        <input type="date" id="filter-to" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px;">
+                        <select id="filter-camera" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px;">
+                            <option value="">All Cameras</option>
+                        </select>
+                        <input type="text" id="filter-search" placeholder="Search..." style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; flex: 1;">
+                        <button onclick="applyFilters()" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer;">Filter</button>
+                        <button onclick="clearFilters()" style="padding: 10px 20px; background: #e5e7eb; color: #1a1a1a; border: none; border-radius: 8px; cursor: pointer;">Clear</button>
+                    </div>
+                    <div id="timeline-activities">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            <p>Loading timeline...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Calendar Page -->
+            <div id="calendar" class="page">
+                <div id="calendar-container"></div>
+            </div>
+
+            <!-- Cameras Page -->
+            <div id="cameras" class="page">
+                <div class="camera-grid" id="camera-grid">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>Loading cameras...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Page -->
+            <div id="settings" class="page">
+                <div class="activity-section">
+                    <div class="section-title">Change Password</div>
+                    <form id="change-password-form">
+                        <div style="margin-bottom: 16px;">
+                            <label style="display: block; margin-bottom: 8px; font-size: 14px; font-weight: 500;">Current Password</label>
+                            <input type="password" id="current-password" style="width: 100%; padding: 12px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                        </div>
+                        <div style="margin-bottom: 20px;">
+                            <label style="display: block; margin-bottom: 8px; font-size: 14px; font-weight: 500;">New Password</label>
+                            <input type="password" id="new-password" style="width: 100%; padding: 12px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                        </div>
+                        <button type="submit" style="padding: 12px 24px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">Update Password</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Activity Detail Modal -->
+    <div id="activityModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close" onclick="closeModal()" style="float: right; font-size: 28px; cursor: pointer; color: #9ca3af;">&times;</span>
+            <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script>
+        let currentPeriod = 'today';
+
+        // Update time and date
+        function updateTime() {
+            const now = new Date();
+            document.getElementById('current-time').textContent = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            document.getElementById('current-date').textContent = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+        }
+        updateTime();
+        setInterval(updateTime, 1000);
+
+        // Period tabs
+        document.querySelectorAll('.screen-time-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                currentPeriod = tab.dataset.period;
+                document.querySelectorAll('.screen-time-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                loadScreenTimeData();
+            });
+        });
+
+        // Navigation
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const pageName = item.dataset.page;
+                document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+                document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+                document.getElementById(pageName).classList.add('active');
+
+                if (pageName === 'calendar') loadCalendar();
+                if (pageName === 'cameras') loadCameras();
+                if (pageName === 'timeline') loadTimeline();
+            });
+        });
+
+        // Load overview on page load
+        window.addEventListener('load', () => {
+            loadOverview();
+        });
+
+        async function loadOverview() {
+            await loadScreenTimeData();
+
+            // Load stats
+            const statsWeek = await fetch('/api/statistics?period=week').then(r => r.json());
+
+            // Create room cards
+            const rooms = statsWeek.by_room.slice(0, 4);
+            const roomColors = ['orange', 'red', 'blue', 'green'];
+            const roomIcons = {
+                'living_room': '🛋️',
+                'kitchen': '🍳',
+                'bedroom': '🛏️',
+                'home_office': '💼',
+                'bathroom': '🚿'
+            };
+
+            const roomsGrid = document.getElementById('rooms-grid');
+            roomsGrid.innerHTML = rooms.map((room, i) => {
+                const icon = roomIcons[room.room] || '📍';
+                return `
+                    <div class="room-card ${roomColors[i % 4]}">
+                        <div class="room-header">
+                            <div class="room-name">${room.room.replace('_', ' ')}</div>
+                            <div class="room-status"></div>
+                        </div>
+                        <div class="room-icon-circle">${icon}</div>
+                        <div class="room-stats">
+                            <div class="room-activity">Activities</div>
+                            <div class="room-count">${room.count}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // Load recent activities
+            const activities = await fetch('/api/activities?limit=10').then(r => r.json());
+            displayActivities(activities.activities, 'recent-activities');
+        }
+
+        async function loadScreenTimeData() {
+            const stats = await fetch(`/api/statistics?period=${currentPeriod}`).then(r => r.json());
+
+            // Display average activities
+            document.getElementById('avg-activities').textContent = stats.total_activities;
+
+            // Calculate comparison (mock for now)
+            const comparison = currentPeriod === 'today' ? '+12%' : '+5%';
+            const compEl = document.getElementById('avg-comparison');
+            compEl.textContent = `${comparison} vs previous ${currentPeriod === 'today' ? 'day' : 'week'}`;
+            compEl.className = comparison.startsWith('+') ? 'comparison' : 'comparison down';
+
+            // Create hourly bar chart
+            const hourlyData = stats.timeline || [];
+            const chartHtml = hourlyData.map(item => {
+                const maxCount = Math.max(...hourlyData.map(i => i.count));
+                const height = maxCount > 0 ? (item.count / maxCount) * 100 : 0;
+                return `
+                    <div class="bar" style="height: ${height}%">
+                        <div class="bar-label">${item.hour}</div>
+                    </div>
+                `;
+            }).join('');
+            document.getElementById('hourly-chart').innerHTML = chartHtml || '<p style="text-align: center; color: #9ca3af;">No hourly data available</p>';
+
+            // Create activity breakdown
+            const breakdownData = stats.by_activity.slice(0, 5);
+            const iconMap = {
+                'watching TV': { icon: '📺', color: 'orange' },
+                'working on laptop': { icon: '💻', color: 'blue' },
+                'cooking': { icon: '🍳', color: 'green' },
+                'reading': { icon: '📖', color: 'purple' },
+                'exercising': { icon: '🏃', color: 'red' }
+            };
+
+            const breakdownHtml = breakdownData.map(item => {
+                const config = iconMap[item.activity] || { icon: '📍', color: 'blue' };
+                return `
+                    <div class="breakdown-item">
+                        <div class="breakdown-icon ${config.color}">${config.icon}</div>
+                        <div class="breakdown-info">
+                            <div class="breakdown-name">${item.activity}</div>
+                            <div class="breakdown-detail">${item.count} times</div>
+                        </div>
+                        <div class="breakdown-time">${item.count}</div>
+                        <div class="breakdown-arrow">›</div>
+                    </div>
+                `;
+            }).join('');
+            document.getElementById('activity-breakdown').innerHTML = breakdownHtml || '<p style="text-align: center; color: #9ca3af;">No activity data available</p>';
+        }
+
+        function displayActivities(activities, containerId) {
+            const container = document.getElementById(containerId);
+
+            if (activities.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #9ca3af;">No activities yet</p>';
+                return;
+            }
+
+            container.innerHTML = activities.map(activity => `
+                <div class="activity-item" onclick="showActivityDetail(${activity.id})">
+                    <div class="activity-time">${formatDate(activity.timestamp)}</div>
+                    <div class="activity-title">📍 ${activity.room || 'Unknown'} · ${activity.activity || 'No activity'}</div>
+                    ${activity.details ? `<div class="activity-desc">${activity.details}</div>` : ''}
+                </div>
+            `).join('');
+        }
+
+        function formatDate(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        async function showActivityDetail(id) {
+            const activities = await fetch('/api/activities').then(r => r.json());
+            const activity = activities.activities.find(a => a.id === id);
+
+            if (!activity) return;
+
+            const modal = document.getElementById('activityModal');
+            const modalBody = document.getElementById('modal-body');
+
+            modalBody.innerHTML = `
+                <h2 style="margin-bottom: 20px;">${activity.room || 'Unknown Room'}</h2>
+                <p style="margin-bottom: 12px;"><strong>Time:</strong> ${formatDate(activity.timestamp)}</p>
+                <p style="margin-bottom: 12px;"><strong>Camera:</strong> ${activity.camera_name}</p>
+                <p style="margin-bottom: 12px;"><strong>Activity:</strong> ${activity.activity || 'None'}</p>
+                <p style="margin-bottom: 12px;"><strong>Details:</strong> ${activity.details || 'None'}</p>
+                <p style="margin-bottom: 12px;"><strong>Cost:</strong> $${activity.cost?.toFixed(4) || '0.0000'}</p>
+                ${activity.image_path ? `<img src="/${activity.image_path}" style="width: 100%; border-radius: 12px; margin-top: 15px;">` : ''}
+            `;
+
+            modal.classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('activityModal').classList.remove('active');
+        }
+
+        async function loadTimeline() {
+            const activities = await fetch('/api/activities?limit=100').then(r => r.json());
+            displayActivities(activities.activities, 'timeline-activities');
+
+            const cameras = await fetch('/api/cameras').then(r => r.json());
+            const cameraSelect = document.getElementById('filter-camera');
+            cameraSelect.innerHTML = '<option value="">All Cameras</option>' +
+                cameras.cameras.map(cam => `<option value="${cam.name}">${cam.name}</option>`).join('');
+        }
+
+        async function applyFilters() {
+            const from = document.getElementById('filter-from').value;
+            const to = document.getElementById('filter-to').value;
+            const camera = document.getElementById('filter-camera').value;
+            const search = document.getElementById('filter-search').value;
+
+            const params = new URLSearchParams();
+            if (from) params.append('from', from);
+            if (to) params.append('to', to);
+            if (camera) params.append('camera', camera);
+            if (search) params.append('search', search);
+
+            const activities = await fetch(`/api/activities?${params}`).then(r => r.json());
+            displayActivities(activities.activities, 'timeline-activities');
+        }
+
+        function clearFilters() {
+            document.getElementById('filter-from').value = '';
+            document.getElementById('filter-to').value = '';
+            document.getElementById('filter-camera').value = '';
+            document.getElementById('filter-search').value = '';
+            loadTimeline();
+        }
+
+        let calendar;
+        async function loadCalendar() {
+            if (calendar) {
+                calendar.refetchEvents();
+                return;
+            }
+
+            const calendarEl = document.getElementById('calendar-container');
+            calendar = new FullCalendar.Calendar(calendarEl, {
+                initialView: 'dayGridMonth',
+                headerToolbar: {
+                    left: 'prev,next today',
+                    center: 'title',
+                    right: 'dayGridMonth,timeGridWeek,timeGridDay'
+                },
+                events: async (info, successCallback) => {
+                    const events = await fetch(`/api/calendar?from=${info.startStr}&to=${info.endStr}`).then(r => r.json());
+                    successCallback(events);
+                },
+                eventClick: (info) => {
+                    showActivityDetail(info.event.id);
+                }
+            });
+
+            calendar.render();
+        }
+
+        async function loadCameras() {
+            const cameras = await fetch('/api/cameras').then(r => r.json());
+            const grid = document.getElementById('camera-grid');
+
+            grid.innerHTML = cameras.cameras.map(camera => `
+                <div class="camera-card">
+                    <div class="camera-name" style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">${camera.name.replace('_', ' ')}</div>
+                    <img id="camera-${camera.name}" class="camera-img" src="" alt="${camera.name}">
+                    <button class="camera-btn" onclick="refreshCamera('${camera.name}')">🔄 Refresh Live</button>
+                </div>
+            `).join('');
+
+            cameras.cameras.forEach(camera => {
+                loadCameraSnapshot(camera.name);
+            });
+        }
+
+        async function loadCameraSnapshot(cameraName) {
+            try {
+                const data = await fetch(`/api/camera/snapshot/${cameraName}`).then(r => r.json());
+                if (data.success) {
+                    document.getElementById(`camera-${cameraName}`).src = data.image;
+                }
+            } catch (e) {
+                console.error('Failed to load snapshot:', e);
+            }
+        }
+
+        async function refreshCamera(cameraName) {
+            const img = document.getElementById(`camera-${cameraName}`);
+            const imgContainer = img.parentElement;
+
+            img.src = '';
+            img.style.background = '#f3f4f6';
+
+            const existingError = imgContainer.querySelector('.camera-error');
+            if (existingError) existingError.remove();
+
+            try {
+                const data = await fetch(`/api/camera/live/${cameraName}`).then(r => r.json());
+                if (data.success) {
+                    img.src = data.image;
+                } else {
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'camera-error';
+                    errorDiv.style.cssText = 'background: #fee2e2; border: 1px solid #fecaca; border-radius: 12px; padding: 16px; margin-top: 12px; font-size: 13px; color: #dc2626;';
+
+                    errorDiv.innerHTML = `
+                        <div style="font-weight: 600; margin-bottom: 8px;">❌ ${data.error}</div>
+                        ${data.details ? `<div style="margin-bottom: 8px;">${data.details}</div>` : ''}
+                        ${data.rtsp_url ? `<div style="font-size: 12px; color: #9ca3af; margin-top: 8px;">RTSP URL: ${data.rtsp_url}</div>` : ''}
+                        <div style="margin-top: 12px;">
+                            <strong>Troubleshooting:</strong>
+                            <ul style="margin: 8px 0 0 20px;">
+                                <li>Verify camera is powered on</li>
+                                <li>Check IP address in config.json</li>
+                                <li>Test RTSP URL in VLC Media Player</li>
+                                <li>Verify network connection</li>
+                            </ul>
+                        </div>
+                    `;
+
+                    imgContainer.appendChild(errorDiv);
+                    img.alt = 'Camera offline';
+                }
+            } catch (e) {
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'camera-error';
+                errorDiv.style.cssText = 'background: #fee2e2; border: 1px solid #fecaca; border-radius: 12px; padding: 16px; margin-top: 12px; font-size: 13px; color: #dc2626;';
+                errorDiv.innerHTML = `
+                    <div style="font-weight: 600;">❌ Network Error</div>
+                    <div style="margin-top: 4px;">${e.message}</div>
+                `;
+                imgContainer.appendChild(errorDiv);
+            }
+        }
+
+        // Change password
+        document.getElementById('change-password-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const current = document.getElementById('current-password').value;
+            const newPass = document.getElementById('new-password').value;
+
+            const response = await fetch('/api/change-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    current_password: current,
+                    new_password: newPass
+                })
+            }).then(r => r.json());
+
+            if (response.success) {
+                alert('Password changed successfully!');
+                document.getElementById('change-password-form').reset();
+            } else {
+                alert('Error: ' + response.error);
+            }
+        });
+
+        // Close modal on outside click
+        window.onclick = (event) => {
+            const modal = document.getElementById('activityModal');
+            if (event.target === modal) {
+                closeModal();
+            }
+        };
+    </script>
+</body>
+</html>
