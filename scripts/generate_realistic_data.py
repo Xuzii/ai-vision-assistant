@@ -318,7 +318,8 @@ def generate_realistic_activities(days=7, force=False):
     print(f"     * Evening entertainment (TV, reading)")
     print(f"     * Weekend variations")
     print(f"\nReady for testing!")
-    print(f"   Start dashboard: python dashboard.py")
+    print(f"   Start system: python start.py")
+    print(f"   Or dashboard only: python src/web/dashboard.py")
     print(f"   View at: http://localhost:8000")
 
 if __name__ == "__main__":

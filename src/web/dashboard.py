@@ -8,10 +8,10 @@ from flask import Flask, render_template, request, jsonify, session, redirect, u
 import sqlite3
 import json
 import secrets
-import hashlib
 from datetime import datetime, timedelta
 from pathlib import Path
 import os
+import sys
 from functools import wraps
 from dotenv import load_dotenv
 import cv2
@@ -22,9 +22,40 @@ from openai import OpenAI
 
 load_dotenv()
 
+# Add project root to path for imports
+project_root = Path(__file__).parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+# Import password utilities from database_setup to avoid duplication
+from src.core.database_setup import hash_password, verify_password
+
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', secrets.token_hex(32))
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
+
+# Config cache to avoid repeated file reads
+_config_cache = None
+_config_last_modified = None
+
+def get_config():
+    """Get configuration with caching"""
+    global _config_cache, _config_last_modified
+
+    config_path = Path('config.json')
+
+    if not config_path.exists():
+        return None
+
+    # Check if config has been modified
+    current_mtime = config_path.stat().st_mtime
+
+    if _config_cache is None or _config_last_modified != current_mtime:
+        with open(config_path, 'r') as f:
+            _config_cache = json.load(f)
+        _config_last_modified = current_mtime
+
+    return _config_cache
 
 # Database helper functions
 def get_db_connection():
@@ -32,21 +63,6 @@ def get_db_connection():
     conn = sqlite3.connect('activities.db')
     conn.row_factory = sqlite3.Row
     return conn
-
-def hash_password(password):
-    """Hash password with salt"""
-    salt = secrets.token_hex(32)
-    pwd_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
-    return f"{salt}${pwd_hash.hex()}"
-
-def verify_password(stored_password, provided_password):
-    """Verify password against hash"""
-    try:
-        salt, pwd_hash = stored_password.split('$')
-        new_hash = hashlib.pbkdf2_hmac('sha256', provided_password.encode(), salt.encode(), 100000)
-        return new_hash.hex() == pwd_hash
-    except:
-        return False
 
 def log_access(user_id, action, ip_address, details=None):
     """Log access for security"""
@@ -328,11 +344,13 @@ def api_calendar():
 @login_required
 def api_cameras():
     """Get list of cameras from config"""
-    with open('config.json', 'r') as f:
-        config = json.load(f)
+    config = get_config()
+
+    if not config:
+        return jsonify({'error': 'Config file not found'}), 500
 
     cameras = []
-    for cam in config['cameras']:
+    for cam in config.get('cameras', []):
         cameras.append({
             'name': cam['name'],
             'active_hours': cam.get('active_hours', {}),
@@ -367,10 +385,12 @@ def api_camera_snapshot(camera_name):
 @login_required
 def api_camera_live(camera_name):
     """Capture live frame from camera"""
-    with open('config.json', 'r') as f:
-        config = json.load(f)
+    config = get_config()
 
-    camera = next((cam for cam in config['cameras'] if cam['name'] == camera_name), None)
+    if not config:
+        return jsonify({'success': False, 'error': 'Config file not found', 'error_type': 'config_error'})
+
+    camera = next((cam for cam in config.get('cameras', []) if cam['name'] == camera_name), None)
 
     if not camera:
         return jsonify({
@@ -427,10 +447,12 @@ def api_camera_live(camera_name):
 
 def generate_camera_stream(camera_name):
     """Generator function for MJPEG stream"""
-    with open('config.json', 'r') as f:
-        config = json.load(f)
+    config = get_config()
 
-    camera = next((cam for cam in config['cameras'] if cam['name'] == camera_name), None)
+    if not config:
+        return
+
+    camera = next((cam for cam in config.get('cameras', []) if cam['name'] == camera_name), None)
 
     if not camera:
         return
@@ -522,7 +544,7 @@ if __name__ == '__main__':
     print("="*60)
 
     # Setup database
-    from database_setup import setup_database
+    from src.core.database_setup import setup_database
     setup_database()
 
     local_ip = get_local_ip()
