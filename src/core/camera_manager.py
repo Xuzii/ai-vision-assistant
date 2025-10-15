@@ -26,6 +26,11 @@ class CameraManager:
         self.setup_database()
         self.setup_frames_directory()
         self.total_cost = 0.0
+        self.daily_cost = 0.0
+        self.daily_cost_cap = 2.0  # $2/day maximum (configurable)
+        self.daily_cost_reset_date = datetime.now().date()
+        self.camera_retry_counts = {}  # Track connection failures
+        self.max_retries = 3  # Max retries before giving up
         
     def load_config(self, config_path):
         """Load configuration from JSON file"""
@@ -60,39 +65,77 @@ class CameraManager:
         frames_dir.mkdir(exist_ok=True)
         print(f"✅ Frames directory ready: {frames_dir}")
     
+    def check_daily_cost_limit(self):
+        """Check if daily cost limit reached, reset if new day"""
+        current_date = datetime.now().date()
+
+        # Reset daily cost if it's a new day
+        if current_date > self.daily_cost_reset_date:
+            print(f"📅 New day detected. Resetting daily cost from ${self.daily_cost:.4f} to $0.00")
+            self.daily_cost = 0.0
+            self.daily_cost_reset_date = current_date
+
+        # Check if we've hit the daily cost cap
+        if self.daily_cost >= self.daily_cost_cap:
+            print(f"⚠️  Daily cost cap of ${self.daily_cost_cap:.2f} reached (current: ${self.daily_cost:.4f})")
+            print(f"⚠️  Skipping analysis to prevent API runaway. Will resume tomorrow.")
+            return False
+
+        return True
+
     def is_within_active_hours(self, active_hours):
         """Check if current time is within camera's active hours"""
         if not active_hours:
             return True
-        
+
         now = datetime.now().time()
         start = dt_time.fromisoformat(active_hours['start'])
         end = dt_time.fromisoformat(active_hours['end'])
-        
+
         return start <= now <= end
     
-    def capture_frame(self, camera_config):
-        """Capture a single frame from the camera"""
+    def capture_frame(self, camera_config, retry_count=0):
+        """Capture a single frame from the camera with exponential backoff retry"""
         rtsp_url = camera_config['rtsp_url']
         camera_name = camera_config['name']
-        
-        print(f"📸 Capturing from {camera_name}...")
-        
+
+        if retry_count == 0:
+            print(f"📸 Capturing from {camera_name}...")
+
         # Open RTSP stream
         cap = cv2.VideoCapture(rtsp_url)
-        
+
         if not cap.isOpened():
-            print(f"❌ Failed to connect to camera: {camera_name}")
-            return None
-        
+            if retry_count < self.max_retries:
+                delay = 2 ** retry_count  # Exponential backoff: 1s, 2s, 4s
+                print(f"⚠️  Connection failed to {camera_name}. Retrying in {delay}s... (Attempt {retry_count + 1}/{self.max_retries})")
+                time.sleep(delay)
+                return self.capture_frame(camera_config, retry_count + 1)
+            else:
+                print(f"❌ Max retries ({self.max_retries}) reached for {camera_name}. Connection failed.")
+                self.camera_retry_counts[camera_name] = self.camera_retry_counts.get(camera_name, 0) + 1
+                print(f"📊 Total connection failures for {camera_name}: {self.camera_retry_counts[camera_name]}")
+                return None
+
         # Read frame
         ret, frame = cap.read()
         cap.release()
-        
+
         if not ret:
-            print(f"❌ Failed to capture frame from: {camera_name}")
-            return None
-        
+            if retry_count < self.max_retries:
+                delay = 2 ** retry_count
+                print(f"⚠️  Failed to read frame from {camera_name}. Retrying in {delay}s... (Attempt {retry_count + 1}/{self.max_retries})")
+                time.sleep(delay)
+                return self.capture_frame(camera_config, retry_count + 1)
+            else:
+                print(f"❌ Max retries ({self.max_retries}) reached for {camera_name}. Frame capture failed.")
+                return None
+
+        # Success - reset retry counter
+        if camera_name in self.camera_retry_counts:
+            print(f"✅ Camera {camera_name} reconnected successfully after {self.camera_retry_counts[camera_name]} previous failures")
+            del self.camera_retry_counts[camera_name]
+
         print(f"✅ Frame captured from {camera_name}")
         return frame
     
@@ -165,8 +208,10 @@ Track WHERE the person is (room + specific location) AND WHAT they're doing (act
             cost = (input_tokens * 0.150 / 1_000_000) + (output_tokens * 0.600 / 1_000_000)
 
             self.total_cost += cost
+            self.daily_cost += cost
 
             print(f"📊 Tokens: {input_tokens} input + {output_tokens} output = ${cost:.6f}")
+            print(f"💰 Daily cost: ${self.daily_cost:.4f} / ${self.daily_cost_cap:.2f}")
 
             return result, cost, input_tokens, output_tokens
             
@@ -220,20 +265,24 @@ Track WHERE the person is (room + specific location) AND WHAT they're doing (act
     def process_camera(self, camera_config):
         """Process a single camera: capture, analyze, log"""
         camera_name = camera_config['name']
-        
+
         # Check if within active hours
         if not self.is_within_active_hours(camera_config.get('active_hours')):
             print(f"⏸️  {camera_name} outside active hours, skipping...")
             return
-        
+
+        # Check daily cost limit before processing
+        if not self.check_daily_cost_limit():
+            return
+
         # Capture frame
         frame = self.capture_frame(camera_config)
         if frame is None:
             return
-        
+
         # Save frame
         image_path = self.save_frame(frame, camera_name)
-        
+
         # Analyze frame
         response, cost, input_tokens, output_tokens = self.analyze_frame(frame, camera_name)
         if response is None:

@@ -107,9 +107,11 @@ def setup_database(db_path='activities.db'):
         )
     ''')
 
-    # Create indexes for performance
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_activities_timestamp ON activities(timestamp)')
+    # Create indexes for performance (CRITICAL for fast queries!)
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_activities_timestamp ON activities(timestamp DESC)')  # DESC for recent-first queries
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_activities_camera ON activities(camera_name)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_activities_room ON activities(room)')  # For room-based filtering
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_activities_activity ON activities(activity)')  # For activity-based filtering
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(session_token)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at)')
 

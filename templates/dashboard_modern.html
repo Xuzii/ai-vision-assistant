@@ -721,13 +721,23 @@
                 font-size: 13px;
             }
 
+            .bar-chart-container {
+                overflow-x: auto;
+                overflow-y: hidden;
+                -webkit-overflow-scrolling: touch;
+                margin: 0 -16px; /* Extend to edges */
+                padding: 0 16px;
+            }
+
             .bar-chart {
                 height: 150px;
                 padding: 0 4px;
+                min-width: 600px; /* Force scroll for 24 bars */
             }
 
             .bar-wrapper {
                 max-width: 35px;
+                min-width: 20px;
             }
 
             .bar-label {
@@ -1095,11 +1105,19 @@
             const avgActivities = currentPeriod === 'today' ? stats.total_activities : Math.round(stats.total_activities / 7);
             document.getElementById('avg-activities').textContent = avgActivities;
 
-            // Calculate comparison (mock for now)
-            const comparison = currentPeriod === 'today' ? '+12%' : '+5%';
+            // Show useful fact instead of comparison
             const compEl = document.getElementById('avg-comparison');
-            compEl.textContent = `${comparison} vs previous ${currentPeriod === 'today' ? 'day' : 'week'}`;
-            compEl.className = comparison.startsWith('+') ? 'comparison' : 'comparison down';
+            if (stats.by_room && stats.by_room.length > 0) {
+                const mostActiveRoom = stats.by_room[0].room.replace('_', ' ');
+                compEl.textContent = `Most active: ${mostActiveRoom}`;
+                compEl.className = 'comparison';
+            } else if (stats.by_activity && stats.by_activity.length > 0) {
+                const topActivity = stats.by_activity[0].activity;
+                compEl.textContent = `Top activity: ${topActivity}`;
+                compEl.className = 'comparison';
+            } else {
+                compEl.textContent = '';
+            }
 
             // Generate bar chart data
             await generateStackedBarChart(allActivities.activities);
