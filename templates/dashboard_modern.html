@@ -225,39 +225,109 @@
             margin-bottom: 32px;
         }
 
+        .chart-axis {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            position: relative;
+        }
+
+        .axis-labels {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            height: 220px;
+            font-size: 12px;
+            color: #6b7280;
+            text-align: right;
+            min-width: 35px;
+            padding-top: 2px;
+        }
+
+        .chart-wrapper {
+            flex: 1;
+            position: relative;
+        }
+
+        .grid-lines {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 220px;
+            pointer-events: none;
+        }
+
+        .grid-line {
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: rgba(0, 0, 0, 0.06);
+        }
+
+        .grid-line.top { top: 0; }
+        .grid-line.middle { top: 50%; }
+        .grid-line.bottom { bottom: 0; background: rgba(0, 0, 0, 0.1); }
+
         .bar-chart {
-            height: 180px;
+            height: 220px;
             display: flex;
             align-items: flex-end;
             justify-content: space-between;
-            padding: 0 8px;
+            gap: 4px;
+            padding: 0 4px;
             position: relative;
-            margin-bottom: 24px;
         }
 
         .average-line {
             position: absolute;
             left: 0;
             right: 0;
-            border-top: 2px dashed #9ca3af;
+            border-top: 2px dashed #10b981;
             pointer-events: none;
         }
 
         .average-line-label {
             position: absolute;
-            right: -32px;
+            left: -38px;
             top: -10px;
             font-size: 11px;
-            color: #9ca3af;
+            color: #10b981;
+            font-weight: 600;
         }
 
         .bar-wrapper {
-            flex: 1;
             display: flex;
             flex-direction: column;
             align-items: center;
             position: relative;
-            max-width: 50px;
+            flex: 1;
+        }
+
+        /* Specific styling for week view bars */
+        .bar-chart.week-view {
+            gap: 16px;
+            justify-content: center;
+        }
+
+        .bar-chart.week-view .bar-wrapper {
+            max-width: 60px;
+        }
+
+        .time-labels {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 8px;
+            padding: 0 4px;
+            font-size: 11px;
+            color: #6b7280;
+            gap: 4px;
+        }
+
+        .time-label {
+            flex: 1;
+            text-align: center;
         }
 
         .bar {
@@ -288,10 +358,15 @@
         .bar-segment.other { background: #6b7280; }
 
         .bar-label {
-            margin-top: 8px;
-            font-size: 12px;
-            color: #9ca3af;
+            margin-top: 12px;
+            font-size: 13px;
+            color: #6b7280;
             font-weight: 500;
+        }
+
+        /* Hide labels for today view only (use time-labels instead) */
+        .bar-chart:not(.week-view) .bar-label {
+            display: none;
         }
 
         .bar-tooltip {
@@ -722,26 +797,23 @@
             }
 
             .bar-chart-container {
-                overflow-x: auto;
-                overflow-y: hidden;
-                -webkit-overflow-scrolling: touch;
-                margin: 0 -16px; /* Extend to edges */
-                padding: 0 16px;
+                margin: 0;
             }
 
             .bar-chart {
-                height: 150px;
-                padding: 0 4px;
-                min-width: 600px; /* Force scroll for 24 bars */
+                height: 180px;
+                gap: 2px;
             }
 
-            .bar-wrapper {
-                max-width: 35px;
-                min-width: 20px;
-            }
-
-            .bar-label {
+            .axis-labels {
+                height: 180px;
                 font-size: 10px;
+                min-width: 25px;
+            }
+
+            .time-labels {
+                font-size: 9px;
+                gap: 2px;
             }
 
             .bar-tooltip {
@@ -914,8 +986,23 @@
                     </div>
 
                     <div class="bar-chart-container">
-                        <div class="bar-chart" id="hourly-chart">
-                            <!-- Bars will be dynamically inserted -->
+                        <div class="chart-axis">
+                            <div class="axis-labels" id="axis-labels">
+                                <!-- Y-axis labels will be dynamically inserted -->
+                            </div>
+                            <div class="chart-wrapper">
+                                <div class="grid-lines" id="grid-lines">
+                                    <div class="grid-line top"></div>
+                                    <div class="grid-line middle"></div>
+                                    <div class="grid-line bottom"></div>
+                                </div>
+                                <div class="bar-chart" id="hourly-chart">
+                                    <!-- Bars will be dynamically inserted -->
+                                </div>
+                            </div>
+                        </div>
+                        <div class="time-labels" id="time-labels">
+                            <!-- Time labels will be dynamically inserted for today view -->
                         </div>
                     </div>
 
@@ -1150,13 +1237,24 @@
                     }
                 });
 
-                // Create bars for each hour
-                const maxTotal = Math.max(...Object.values(grouped).map(cats =>
-                    Object.values(cats).reduce((a, b) => a + b, 0)
+                // Always show all 24 hours
+                const hoursToShow = Array.from({length: 24}, (_, i) => i);
+
+                // Create bars for all hours
+                const maxTotal = Math.max(...hoursToShow.map(hour =>
+                    Object.values(grouped[hour]).reduce((a, b) => a + b, 0)
                 ), 1);
 
+                // Add Y-axis labels
+                const axisLabels = document.getElementById('axis-labels');
+                axisLabels.innerHTML = `
+                    <div>${maxTotal}</div>
+                    <div>${Math.round(maxTotal / 2)}</div>
+                    <div>0</div>
+                `;
+
                 let html = '';
-                for (let hour = 0; hour < 24; hour++) {
+                for (const hour of hoursToShow) {
                     const data = grouped[hour];
                     const total = Object.values(data).reduce((a, b) => a + b, 0);
                     const totalHeight = (total / maxTotal) * 100;
@@ -1194,6 +1292,16 @@
                 }
 
                 chartContainer.innerHTML = html;
+                chartContainer.classList.remove('week-view');
+
+                // Add major time labels (12 AM, 6 AM, 12 PM, 6 PM) at bottom
+                const timeLabelsContainer = document.getElementById('time-labels');
+                timeLabelsContainer.innerHTML = `
+                    <div class="time-label">12 AM</div>
+                    <div class="time-label">6 AM</div>
+                    <div class="time-label">12 PM</div>
+                    <div class="time-label">6 PM</div>
+                `;
 
             } else {
                 // Group by day for last 7 days
@@ -1229,6 +1337,14 @@
                 ) / 7;
                 const avgLinePosition = (avgTotal / maxTotal) * 100;
 
+                // Add Y-axis labels for week view
+                const axisLabels = document.getElementById('axis-labels');
+                axisLabels.innerHTML = `
+                    <div>${maxTotal}</div>
+                    <div>${Math.round(maxTotal / 2)}</div>
+                    <div>0</div>
+                `;
+
                 let html = `<div class="average-line" style="bottom: ${avgLinePosition}%;"><span class="average-line-label">avg</span></div>`;
 
                 last7Days.forEach(day => {
@@ -1252,18 +1368,25 @@
                             return `<div class="bar-segment ${cat}" style="height: ${height}px;"></div>`;
                         }).join('');
 
+                    // Get first letter of day (S, M, T, W, T, F, S)
+                    const dayLetter = day.dayLabel.charAt(0);
+
                     html += `
                         <div class="bar-wrapper">
                             <div class="bar" style="height: ${totalHeight}%;">
                                 <div class="bar-tooltip">${tooltipHtml}</div>
                                 ${segments || '<div class="bar-segment other" style="height: 2px;"></div>'}
                             </div>
-                            <div class="bar-label">${day.dayLabel}</div>
+                            <div class="bar-label">${dayLetter}</div>
                         </div>
                     `;
                 });
 
                 chartContainer.innerHTML = html;
+                chartContainer.classList.add('week-view');
+
+                // Clear time labels for week view
+                document.getElementById('time-labels').innerHTML = '';
             }
 
             // Update activity breakdown with category totals
