@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
-Life Tracking Dashboard - Main Application
-Secure web interface for viewing activities, camera feeds, and analytics
+Life Tracking Dashboard - API Server
+RESTful API for activities, camera feeds, and analytics
+Designed for React/SPA front-end integration
 """
 
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for, send_from_directory
+from flask import Flask, request, jsonify, session, send_from_directory
+from flask_cors import CORS
 import sqlite3
 import json
 import secrets
@@ -36,11 +38,14 @@ except ImportError:
     sys.path.insert(0, str(core_dir))
     from database_setup import hash_password, verify_password
 
-# Configure Flask to use templates from project root
-template_dir = Path(__file__).parent.parent.parent / 'templates'
-app = Flask(__name__, template_folder=str(template_dir))
+# Configure Flask as API server
+app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', secrets.token_hex(32))
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
+
+# Enable CORS for React front-end
+# In production, restrict this to your React app's domain
+CORS(app, supports_credentials=True, origins=["http://localhost:3000", "http://localhost:5173"])
 
 # Config cache to avoid repeated file reads
 _config_cache = None
@@ -82,37 +87,39 @@ def log_access(user_id, action, ip_address, details=None):
     conn.commit()
     conn.close()
 
-# Authentication decorator
+# Authentication decorator for API endpoints
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
-            return redirect(url_for('login'))
+            return jsonify({'success': False, 'error': 'Authentication required', 'error_type': 'auth_required'}), 401
         return f(*args, **kwargs)
     return decorated_function
 
-# Routes
+# API Routes
 @app.route('/')
 def index():
-    """Redirect to dashboard or login"""
-    if 'user_id' in session:
-        return redirect(url_for('dashboard'))
-    return redirect(url_for('login'))
+    """API root - health check"""
+    return jsonify({
+        'status': 'ok',
+        'service': 'Life Tracking API',
+        'version': '2.0',
+        'message': 'API is running. Connect your React front-end to this endpoint.'
+    })
 
-@app.route('/login', methods=['GET', 'POST'])
+@app.route('/api/auth/login', methods=['POST'])
 def login():
-    """Login page"""
-    if request.method == 'GET':
-        if 'user_id' in session:
-            return redirect(url_for('dashboard'))
-        return render_template('login.html')
+    """API endpoint for user authentication"""
+    data = request.get_json()
 
-    # Handle login POST
-    username = request.form.get('username')
-    password = request.form.get('password')
+    if not data:
+        return jsonify({'success': False, 'error': 'JSON body required'}), 400
+
+    username = data.get('username')
+    password = data.get('password')
 
     if not username or not password:
-        return jsonify({'success': False, 'error': 'Username and password required'})
+        return jsonify({'success': False, 'error': 'Username and password required'}), 400
 
     conn = get_db_connection()
     user = conn.execute('SELECT * FROM users WHERE username = ? AND is_active = 1', (username,)).fetchone()
@@ -132,7 +139,13 @@ def login():
         log_access(user['id'], 'login', request.remote_addr)
 
         conn.close()
-        return jsonify({'success': True, 'redirect': url_for('dashboard')})
+        return jsonify({
+            'success': True,
+            'user': {
+                'id': user['id'],
+                'username': user['username']
+            }
+        })
     else:
         # Log failed attempt
         if user:
@@ -141,21 +154,28 @@ def login():
             log_access(None, 'login_failed', request.remote_addr, f'Unknown user: {username}')
 
         conn.close()
-        return jsonify({'success': False, 'error': 'Invalid username or password'})
+        return jsonify({'success': False, 'error': 'Invalid username or password'}), 401
 
-@app.route('/logout')
+@app.route('/api/auth/logout', methods=['POST'])
 def logout():
-    """Logout user"""
+    """API endpoint for user logout"""
     if 'user_id' in session:
         log_access(session['user_id'], 'logout', request.remote_addr)
     session.clear()
-    return redirect(url_for('login'))
+    return jsonify({'success': True, 'message': 'Logged out successfully'})
 
-@app.route('/dashboard')
-@login_required
-def dashboard():
-    """Main dashboard"""
-    return render_template('dashboard_modern.html', username=session.get('username'))
+@app.route('/api/auth/status')
+def auth_status():
+    """Check if user is authenticated"""
+    if 'user_id' in session:
+        return jsonify({
+            'authenticated': True,
+            'user': {
+                'id': session['user_id'],
+                'username': session.get('username')
+            }
+        })
+    return jsonify({'authenticated': False}), 401
 
 @app.route('/api/activities')
 @login_required
@@ -548,7 +568,7 @@ if __name__ == '__main__':
             return "127.0.0.1"
 
     print("\n" + "="*60)
-    print("🏠 Life Tracking Dashboard Starting...")
+    print("🚀 Life Tracking API Server Starting...")
     print("="*60)
 
     # Setup database
@@ -561,10 +581,20 @@ if __name__ == '__main__':
     local_ip = get_local_ip()
     port = 8000
 
-    print(f"\n🌐 Dashboard URLs:")
+    print(f"\n🌐 API Server URLs:")
     print(f"\n   Local:   http://localhost:{port}")
     print(f"   Network: http://{local_ip}:{port}")
-    print(f"\n🔐 Login with the credentials shown above")
+    print(f"\n📡 API Endpoints:")
+    print(f"   Health Check:    GET  {port}/")
+    print(f"   Login:           POST {port}/api/auth/login")
+    print(f"   Logout:          POST {port}/api/auth/logout")
+    print(f"   Auth Status:     GET  {port}/api/auth/status")
+    print(f"   Activities:      GET  {port}/api/activities")
+    print(f"   Statistics:      GET  {port}/api/statistics")
+    print(f"   Calendar:        GET  {port}/api/calendar")
+    print(f"   Cameras:         GET  {port}/api/cameras")
+    print(f"\n🔐 Default credentials from database_setup.py")
+    print(f"\n💡 Connect your React front-end to: http://localhost:{port}")
     print("\n" + "="*60)
     print("\nPress Ctrl+C to stop\n")
 

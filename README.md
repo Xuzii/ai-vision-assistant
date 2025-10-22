@@ -4,14 +4,17 @@
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![React Ready](https://img.shields.io/badge/frontend-React%20Ready-61dafb.svg)](https://reactjs.org/)
 
-Track your daily activities automatically using IP cameras and OpenAI's GPT-4o-mini. Get beautiful analytics, live streaming, and remote access via Tailscale.
+Track your daily activities automatically using IP cameras and OpenAI's GPT-4o-mini. **Now with RESTful API backend ready for your React front-end!**
 
 **Cost:** ~$0.15/month | **Setup time:** 10 minutes
 
 ---
 
 ## 🚀 Quick Start
+
+### Backend Setup
 
 ```bash
 # 1. Clone and install
@@ -31,12 +34,12 @@ python start.py
 # Note: First run downloads YOLOv8 model (~11MB)
 ```
 
-Open **http://localhost:8000** 🎉
+API server runs at **http://localhost:8000** 🎉
 
 **Interactive Management:**
 - Press `Ctrl+C` to open management menu
 - `1` - Restart Camera Manager
-- `2` - Restart Dashboard
+- `2` - Restart API Server
 - `3` - Restart Both
 - `4` - Check Status
 - `5` - Stop All & Exit
@@ -44,8 +47,22 @@ Open **http://localhost:8000** 🎉
 **Alternative:** Run components separately:
 ```bash
 python src/core/camera_manager.py  # Terminal 1: Auto-tracking
-python src/web/dashboard.py        # Terminal 2: Web dashboard
+python src/web/dashboard.py        # Terminal 2: API server
 ```
+
+### React Front-End Integration
+
+The backend is now a pure RESTful API server. Connect your React app:
+
+```bash
+# In your React project
+npm install axios
+
+# Configure API base URL
+VITE_API_BASE_URL=http://localhost:8000
+```
+
+See **[API_DOCUMENTATION.md](API_DOCUMENTATION.md)** for complete integration guide with React examples!
 
 ---
 
@@ -56,27 +73,28 @@ ai-vision-assistant/
 ├── src/
 │   ├── core/              # Core functionality
 │   │   ├── camera_manager.py    # Automated tracking
+│   │   ├── activity_detector.py # YOLOv8 person detection
 │   │   ├── database_setup.py    # Database initialization
 │   │   ├── voice_assistant.py   # Voice queries
 │   │   └── stream_server.py     # Video streaming
-│   └── web/               # Web interface
-│       └── dashboard.py         # Flask dashboard
+│   └── web/               # RESTful API
+│       └── dashboard.py         # Flask API server (CORS enabled)
 ├── scripts/               # Utility scripts
 │   ├── test_camera.py           # Camera connection test
 │   ├── find_camera.py           # Network camera scanner
 │   ├── generate_realistic_data.py  # Test data generator
 │   └── start_system.bat         # System launcher (Windows)
-├── templates/             # HTML templates
-│   ├── dashboard_modern.html    # Main dashboard UI
-│   └── login.html               # Login page
 ├── docs/                  # Documentation
 │   ├── README.md                # Complete guide
 │   └── QUICK_REFERENCE.md       # Quick commands
+├── API_DOCUMENTATION.md   # 📘 Complete API reference for React
 ├── start.py               # Convenience launcher (starts everything)
 ├── config.example.json    # Configuration template
 ├── .env.example          # Environment variables template
-└── requirements.txt      # Python dependencies
+└── requirements.txt      # Python dependencies (includes flask-cors)
 ```
+
+**Note:** The previous HTML templates have been removed. This is now a backend-only API server designed for React/SPA front-ends.
 
 ---
 
@@ -99,6 +117,7 @@ ai-vision-assistant/
 
 ## 📖 Documentation
 
+- **[API Documentation](API_DOCUMENTATION.md)** - 📘 Complete API reference for React integration
 - **[Complete Guide](docs/README.md)** - Full setup, features, troubleshooting
 - **[Activity Detection](docs/ACTIVITY_DETECTION.md)** - Smart cost optimization with YOLOv8
 - **[Quick Reference](docs/QUICK_REFERENCE.md)** - Commands and Tailscale access
@@ -135,10 +154,11 @@ ai-vision-assistant/
 
 ## 🛠️ Tech Stack
 
-- **Backend:** Python, Flask, SQLite
+- **Backend API:** Python, Flask, Flask-CORS, SQLite
 - **AI:** OpenAI GPT-4o-mini, Whisper, YOLOv8
 - **Camera:** OpenCV, RTSP
-- **Frontend:** Vanilla JS, FullCalendar.js
+- **Frontend:** React-ready RESTful API (bring your own UI!)
+- **Authentication:** Session-based with secure cookies
 - **Remote Access:** Tailscale
 
 ---
