@@ -20,5 +20,13 @@
     "tts_model": "tts-1",
     "tts_voice": "alloy"
   },
+  "activity_detection": {
+    "enabled": true,
+    "person_confidence_threshold": 0.5,
+    "movement_threshold_pixels": 50,
+    "frame_difference_threshold": 0.15,
+    "force_analyze_interval_minutes": 30,
+    "yolo_model": "yolov8s.pt"
+  },
   "frames_directory": "frames"
 }

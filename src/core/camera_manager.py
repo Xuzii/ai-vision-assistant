@@ -2,6 +2,7 @@
 """
 AI Vision Assistant - Camera Manager
 Automatically captures frames and logs activities using GPT-4o-mini
+With smart activity detection for cost optimization
 """
 
 import cv2
@@ -14,6 +15,7 @@ from pathlib import Path
 import os
 from openai import OpenAI
 from dotenv import load_dotenv
+from activity_detector import ActivityDetector
 
 # Load environment variables
 load_dotenv()
@@ -31,6 +33,9 @@ class CameraManager:
         self.daily_cost_reset_date = datetime.now().date()
         self.camera_retry_counts = {}  # Track connection failures
         self.max_retries = 3  # Max retries before giving up
+
+        # Initialize activity detector for cost optimization
+        self.activity_detector = ActivityDetector(self.config)
         
     def load_config(self, config_path):
         """Load configuration from JSON file"""
@@ -42,7 +47,7 @@ class CameraManager:
         db_path = self.config['database']['path']
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.cursor = self.conn.cursor()
-        
+
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS activities (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,9 +58,37 @@ class CameraManager:
                 details TEXT,
                 full_response TEXT,
                 cost REAL,
-                image_path TEXT
+                image_path TEXT,
+                input_tokens INTEGER,
+                output_tokens INTEGER,
+                person_detected INTEGER,
+                detection_confidence REAL,
+                analysis_skipped INTEGER DEFAULT 0,
+                skip_reason TEXT
             )
         ''')
+
+        # Add new columns to existing databases (migration)
+        try:
+            self.cursor.execute('ALTER TABLE activities ADD COLUMN person_detected INTEGER')
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+        try:
+            self.cursor.execute('ALTER TABLE activities ADD COLUMN detection_confidence REAL')
+        except sqlite3.OperationalError:
+            pass
+
+        try:
+            self.cursor.execute('ALTER TABLE activities ADD COLUMN analysis_skipped INTEGER DEFAULT 0')
+        except sqlite3.OperationalError:
+            pass
+
+        try:
+            self.cursor.execute('ALTER TABLE activities ADD COLUMN skip_reason TEXT')
+        except sqlite3.OperationalError:
+            pass
+
         self.conn.commit()
         print(f"✅ Database initialized: {db_path}")
     
@@ -238,14 +271,14 @@ Track WHERE the person is (room + specific location) AND WHAT they're doing (act
         
         return data
     
-    def log_activity(self, camera_name, response_text, cost, input_tokens, output_tokens, image_path):
+    def log_activity(self, camera_name, response_text, cost, input_tokens, output_tokens, image_path, person_detected=True, confidence=1.0):
         """Log activity to database"""
         parsed = self.parse_response(response_text)
         timestamp = datetime.now().isoformat()
 
         self.cursor.execute('''
-            INSERT INTO activities (timestamp, camera_name, room, activity, details, full_response, cost, input_tokens, output_tokens, image_path)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO activities (timestamp, camera_name, room, activity, details, full_response, cost, input_tokens, output_tokens, image_path, person_detected, detection_confidence, analysis_skipped)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             timestamp,
             camera_name,
@@ -256,11 +289,41 @@ Track WHERE the person is (room + specific location) AND WHAT they're doing (act
             cost,
             input_tokens,
             output_tokens,
-            image_path
+            image_path,
+            1 if person_detected else 0,
+            confidence,
+            0
         ))
         self.conn.commit()
 
         print(f"💾 Logged: {parsed['room']} - {parsed['activity']} (${cost:.6f})")
+
+    def log_skipped_activity(self, camera_name, reason, image_path, person_detected, confidence):
+        """Log when activity analysis is skipped"""
+        timestamp = datetime.now().isoformat()
+
+        self.cursor.execute('''
+            INSERT INTO activities (timestamp, camera_name, room, activity, details, full_response, cost, input_tokens, output_tokens, image_path, person_detected, detection_confidence, analysis_skipped, skip_reason)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            timestamp,
+            camera_name,
+            '',  # room
+            'Analysis skipped',
+            reason,
+            '',  # full_response
+            0.0,  # cost
+            0,    # input_tokens
+            0,    # output_tokens
+            image_path,
+            1 if person_detected else 0,
+            confidence,
+            1,    # analysis_skipped
+            reason
+        ))
+        self.conn.commit()
+
+        print(f"⏭️  Skipped: {reason}")
     
     def process_camera(self, camera_config):
         """Process a single camera: capture, analyze, log"""
@@ -283,13 +346,48 @@ Track WHERE the person is (room + specific location) AND WHAT they're doing (act
         # Save frame
         image_path = self.save_frame(frame, camera_name)
 
-        # Analyze frame
+        # Smart detection: should we analyze this frame?
+        should_analyze, reason, details = self.activity_detector.should_analyze(frame, camera_name)
+
+        print(f"🔍 Detection: {reason}")
+        if details.get('detection_time_ms'):
+            print(f"   ⚡ Detection time: {details['detection_time_ms']}ms")
+        if details.get('person_detected'):
+            print(f"   👤 Person: Yes (confidence: {details.get('confidence', 0):.2f})")
+            if details.get('movement_pixels'):
+                print(f"   📐 Movement: {details['movement_pixels']}px")
+            if details.get('frame_difference'):
+                print(f"   🎨 Visual change: {details['frame_difference']*100:.1f}%")
+        else:
+            print(f"   👤 Person: No")
+
+        # If analysis not needed, log and skip
+        if not should_analyze:
+            self.log_skipped_activity(
+                camera_name,
+                reason,
+                image_path,
+                details.get('person_detected', False),
+                details.get('confidence', 0.0)
+            )
+            return
+
+        # Analyze frame with OpenAI
         response, cost, input_tokens, output_tokens = self.analyze_frame(frame, camera_name)
         if response is None:
             return
 
         # Log to database
-        self.log_activity(camera_name, response, cost, input_tokens, output_tokens, image_path)
+        self.log_activity(
+            camera_name,
+            response,
+            cost,
+            input_tokens,
+            output_tokens,
+            image_path,
+            details.get('person_detected', True),
+            details.get('confidence', 1.0)
+        )
     
     def run(self):
         """Main loop: process all cameras on schedule"""
@@ -315,6 +413,10 @@ Track WHERE the person is (room + specific location) AND WHAT they're doing (act
         except KeyboardInterrupt:
             print("\n\n🛑 Stopping camera manager...")
             print(f"📊 Total session cost: ${self.total_cost:.4f}")
+
+            # Print detection statistics
+            self.activity_detector.print_stats()
+
             self.conn.close()
             print("✅ Database closed. Goodbye!")
 

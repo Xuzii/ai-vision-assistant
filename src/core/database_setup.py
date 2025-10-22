@@ -38,7 +38,11 @@ def setup_database(db_path='activities.db'):
             cost REAL,
             input_tokens INTEGER,
             output_tokens INTEGER,
-            image_path TEXT
+            image_path TEXT,
+            person_detected INTEGER,
+            detection_confidence REAL,
+            analysis_skipped INTEGER DEFAULT 0,
+            skip_reason TEXT
         )
     ''')
 
@@ -50,6 +54,27 @@ def setup_database(db_path='activities.db'):
 
     try:
         cursor.execute('ALTER TABLE activities ADD COLUMN output_tokens INTEGER')
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
+    # Add detection columns (migration for existing databases)
+    try:
+        cursor.execute('ALTER TABLE activities ADD COLUMN person_detected INTEGER')
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
+    try:
+        cursor.execute('ALTER TABLE activities ADD COLUMN detection_confidence REAL')
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
+    try:
+        cursor.execute('ALTER TABLE activities ADD COLUMN analysis_skipped INTEGER DEFAULT 0')
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
+    try:
+        cursor.execute('ALTER TABLE activities ADD COLUMN skip_reason TEXT')
     except sqlite3.OperationalError:
         pass  # Column already exists
 
