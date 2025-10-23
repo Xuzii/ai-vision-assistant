@@ -180,11 +180,12 @@ def auth_status():
 @app.route('/api/activities')
 @login_required
 def api_activities():
-    """Get activities with filtering"""
+    """Get activities with filtering including category"""
     # Get query parameters
     limit = request.args.get('limit', 100, type=int)
     offset = request.args.get('offset', 0, type=int)
     camera = request.args.get('camera', None)
+    category = request.args.get('category', None)  # NEW: Category filter
     date_from = request.args.get('from', None)
     date_to = request.args.get('to', None)
     search = request.args.get('search', None)
@@ -198,6 +199,10 @@ def api_activities():
     if camera:
         query += ' AND camera_name = ?'
         params.append(camera)
+
+    if category and category != 'All':  # NEW: Category filtering
+        query += ' AND category = ?'
+        params.append(category)
 
     if date_from:
         query += ' AND timestamp >= ?'
@@ -223,6 +228,9 @@ def api_activities():
     if camera:
         count_query += ' AND camera_name = ?'
         count_params.append(camera)
+    if category and category != 'All':  # NEW: Category filtering in count
+        count_query += ' AND category = ?'
+        count_params.append(category)
     if date_from:
         count_query += ' AND timestamp >= ?'
         count_params.append(date_from)
@@ -315,6 +323,18 @@ def api_statistics():
         ORDER BY hour
     ''').fetchall()
 
+    # Activities by category (NEW)
+    by_category = conn.execute('''
+        SELECT
+            category,
+            COUNT(*) as count,
+            SUM(duration_minutes) as total_minutes
+        FROM activities
+        WHERE timestamp >= ? AND category IS NOT NULL
+        GROUP BY category
+        ORDER BY count DESC
+    ''', (date_from,)).fetchall()
+
     conn.close()
 
     return jsonify({
@@ -324,7 +344,66 @@ def api_statistics():
         'by_room': [dict(row) for row in by_room],
         'by_activity': [dict(row) for row in by_activity],
         'by_camera': [dict(row) for row in by_camera],
+        'by_category': [dict(row) for row in by_category],  # NEW
         'timeline': [dict(row) for row in timeline]
+    })
+
+@app.route('/api/timeline')
+@login_required
+def api_timeline():
+    """Get timeline for the last 24 hours with duration"""
+    conn = get_db_connection()
+
+    # Get activities from last 24 hours
+    activities = conn.execute('''
+        SELECT
+            timestamp,
+            person_name,
+            room as location,
+            activity,
+            category,
+            duration_minutes
+        FROM activities
+        WHERE timestamp >= datetime('now', '-24 hours')
+        AND person_name IS NOT NULL
+        ORDER BY timestamp ASC
+    ''').fetchall()
+
+    conn.close()
+
+    # Format for frontend
+    timeline = []
+    for act in activities:
+        # Parse timestamp and format time
+        try:
+            dt = datetime.fromisoformat(act['timestamp'])
+            time_str = dt.strftime('%I:%M %p')
+        except:
+            time_str = act['timestamp']
+
+        # Format duration
+        duration_str = None
+        if act['duration_minutes']:
+            if act['duration_minutes'] >= 60:
+                hours = act['duration_minutes'] // 60
+                mins = act['duration_minutes'] % 60
+                duration_str = f"{hours}h {mins}m" if mins > 0 else f"{hours}h"
+            else:
+                duration_str = f"{act['duration_minutes']} min"
+
+        timeline.append({
+            'time': time_str,
+            'person': act['person_name'] or 'Unknown',
+            'location': act['location'] or 'Unknown',
+            'activity': act['activity'] or 'Activity',
+            'category': act['category'] or 'Other',
+            'duration': duration_str
+        })
+
+    return jsonify({
+        'period': 'last_24_hours',
+        'activities': timeline,
+        'total': len(timeline)
     })
 
 @app.route('/api/calendar')
