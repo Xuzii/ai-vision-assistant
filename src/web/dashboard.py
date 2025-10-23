@@ -633,6 +633,337 @@ def api_change_password():
 
     return jsonify({'success': True})
 
+# ============================================================================
+# ENHANCED COST MONITORING API
+# ============================================================================
+
+@app.route('/api/cost/today')
+@login_required
+def api_cost_today():
+    """Get today's cost metrics"""
+    conn = get_db_connection()
+
+    # Get settings
+    settings = conn.execute('''
+        SELECT daily_cap, notification_threshold
+        FROM cost_settings WHERE id = 1
+    ''').fetchone()
+
+    # Get today's costs
+    today = datetime.now().replace(hour=0, minute=0, second=0).isoformat()
+
+    stats = conn.execute('''
+        SELECT
+            COALESCE(SUM(cost), 0) as total_cost,
+            COALESCE(SUM(tokens_used), 0) as total_tokens,
+            COUNT(*) as total_requests
+        FROM activities
+        WHERE timestamp >= ?
+        AND cost IS NOT NULL
+    ''', (today,)).fetchone()
+
+    # Get cost by category
+    by_category = conn.execute('''
+        SELECT
+            category,
+            COALESCE(SUM(cost), 0) as cost,
+            COALESCE(SUM(tokens_used), 0) as tokens
+        FROM activities
+        WHERE timestamp >= ?
+        AND category IS NOT NULL
+        GROUP BY category
+    ''', (today,)).fetchall()
+
+    conn.close()
+
+    daily_cap = settings['daily_cap'] if settings else 2.00
+    notification_threshold = settings['notification_threshold'] if settings else 1.50
+
+    return jsonify({
+        'daily_spent': round(stats['total_cost'], 4),
+        'daily_cap': daily_cap,
+        'total_tokens': stats['total_tokens'],
+        'requests_today': stats['total_requests'],
+        'percentage_used': round((stats['total_cost'] / daily_cap) * 100, 1) if daily_cap > 0 else 0,
+        'threshold_reached': stats['total_cost'] >= notification_threshold,
+        'cap_reached': stats['total_cost'] >= daily_cap,
+        'by_category': [dict(c) for c in by_category]
+    })
+
+@app.route('/api/cost/settings', methods=['GET'])
+@login_required
+def api_cost_settings_get():
+    """Get cost settings"""
+    conn = get_db_connection()
+    settings = conn.execute('SELECT * FROM cost_settings WHERE id = 1').fetchone()
+    conn.close()
+
+    if settings:
+        return jsonify(dict(settings))
+    else:
+        return jsonify({
+            'daily_cap': 2.00,
+            'notification_threshold': 1.50
+        })
+
+@app.route('/api/cost/settings', methods=['PUT'])
+@login_required
+def api_cost_settings_update():
+    """Update cost settings"""
+    data = request.json
+
+    conn = get_db_connection()
+    conn.execute('''
+        UPDATE cost_settings
+        SET daily_cap = ?,
+            notification_threshold = ?,
+            updated_at = ?
+        WHERE id = 1
+    ''', (
+        data.get('daily_cap', 2.00),
+        data.get('notification_threshold', 1.50),
+        datetime.now().isoformat()
+    ))
+    conn.commit()
+    conn.close()
+
+    return jsonify({'success': True})
+
+@app.route('/api/cost/history')
+@login_required
+def api_cost_history():
+    """Get cost history for last 30 days"""
+    conn = get_db_connection()
+
+    history = conn.execute('''
+        SELECT
+            DATE(timestamp) as date,
+            COALESCE(SUM(cost), 0) as total_cost,
+            COALESCE(SUM(tokens_used), 0) as total_tokens,
+            COUNT(*) as total_requests
+        FROM activities
+        WHERE timestamp >= date('now', '-30 days')
+        GROUP BY DATE(timestamp)
+        ORDER BY date DESC
+    ''').fetchall()
+
+    conn.close()
+
+    return jsonify({
+        'history': [dict(h) for h in history]
+    })
+
+# ============================================================================
+# CAMERA CONNECTION STATUS API
+# ============================================================================
+
+@app.route('/api/cameras/status')
+@login_required
+def api_cameras_status():
+    """Get real-time camera status"""
+    conn = get_db_connection()
+
+    # Get configured cameras
+    config = get_config()
+    if not config:
+        return jsonify({'error': 'Config not found'}), 500
+
+    cameras = []
+    for cam in config.get('cameras', []):
+        # Get status from database
+        status = conn.execute('''
+            SELECT * FROM camera_status
+            WHERE camera_name = ?
+        ''', (cam['name'],)).fetchone()
+
+        if status:
+            cameras.append({
+                'id': cam['name'].lower().replace(' ', '_'),
+                'name': cam['name'],
+                'location': cam.get('room', 'Unknown'),
+                'is_connected': bool(status['is_connected']),
+                'last_successful_connection': status['last_successful_connection'],
+                'last_failed_connection': status['last_failed_connection'],
+                'consecutive_failures': status['consecutive_failures'],
+                'error_message': status['error_message']
+            })
+        else:
+            # No status yet
+            cameras.append({
+                'id': cam['name'].lower().replace(' ', '_'),
+                'name': cam['name'],
+                'location': cam.get('room', 'Unknown'),
+                'is_connected': None,
+                'last_successful_connection': None,
+                'last_failed_connection': None,
+                'consecutive_failures': 0,
+                'error_message': None
+            })
+
+    conn.close()
+
+    # Count failures
+    failed_count = sum(1 for c in cameras if c['is_connected'] == False)
+
+    return jsonify({
+        'cameras': cameras,
+        'failed_count': failed_count,
+        'total_count': len(cameras)
+    })
+
+@app.route('/api/cameras/<camera_name>/reconnect', methods=['POST'])
+@login_required
+def api_camera_reconnect(camera_name):
+    """Trigger camera reconnection attempt"""
+    conn = get_db_connection()
+    conn.execute('''
+        UPDATE camera_status
+        SET consecutive_failures = 0,
+            updated_at = ?
+        WHERE camera_name = ?
+    ''', (datetime.now().isoformat(), camera_name))
+    conn.commit()
+    conn.close()
+
+    return jsonify({'success': True, 'message': 'Reconnection triggered'})
+
+# ============================================================================
+# VOICE QUERY SYSTEM API
+# ============================================================================
+
+@app.route('/api/voice/query', methods=['POST'])
+@login_required
+def api_voice_query():
+    """Process natural language query about activities"""
+    data = request.json
+    query = data.get('query')
+
+    if not query:
+        return jsonify({'success': False, 'error': 'Query required'}), 400
+
+    try:
+        # Initialize OpenAI client
+        client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+
+        # Get context from database
+        conn = get_db_connection()
+
+        # Get today's activities
+        today = datetime.now().replace(hour=0, minute=0, second=0).isoformat()
+
+        activities = conn.execute('''
+            SELECT timestamp, room, activity, category, person_name, duration_minutes
+            FROM activities
+            WHERE timestamp >= ?
+            ORDER BY timestamp DESC
+            LIMIT 50
+        ''', (today,)).fetchall()
+
+        # Get category totals for today
+        stats = conn.execute('''
+            SELECT
+                category,
+                COUNT(*) as count,
+                SUM(duration_minutes) as total_minutes
+            FROM activities
+            WHERE timestamp >= ?
+            AND category IS NOT NULL
+            GROUP BY category
+        ''', (today,)).fetchall()
+
+        # Build context
+        context = "Recent Activities:\n"
+        for act in activities[:10]:
+            time = datetime.fromisoformat(act['timestamp']).strftime('%I:%M %p')
+            context += f"- {time}: {act['person_name'] or 'Unknown'} in {act['room']} - {act['activity']} [{act['category']}]\n"
+
+        context += "\nToday's Summary:\n"
+        for stat in stats:
+            hours = stat['total_minutes'] / 60 if stat['total_minutes'] else 0
+            context += f"- {stat['category']}: {stat['count']} activities, {hours:.1f} hours\n"
+
+        # Build GPT prompt
+        system_prompt = f"""You are a helpful assistant that answers questions about a person's daily activities.
+
+Available data context:
+{context}
+
+Instructions:
+- Answer questions about activities, time spent, locations, and patterns
+- Be specific with times and durations
+- If data is not available, say so
+- Format times in 12-hour format (e.g., 2:00 PM)
+- Keep answers concise but informative
+
+Current date/time: {datetime.now().strftime('%Y-%m-%d %I:%M %p')}
+"""
+
+        # Query GPT
+        start_time = datetime.now()
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": query}
+            ],
+            max_tokens=300,
+            temperature=0.3
+        )
+
+        execution_time = int((datetime.now() - start_time).total_seconds() * 1000)
+
+        answer = response.choices[0].message.content
+        tokens = response.usage.total_tokens
+        cost = (response.usage.prompt_tokens * 0.150 / 1_000_000) + \
+               (response.usage.completion_tokens * 0.600 / 1_000_000)
+
+        # Save query to database
+        conn.execute('''
+            INSERT INTO voice_queries (
+                user_id, query_text, response_text,
+                timestamp, tokens_used, cost, execution_time_ms
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            session['user_id'], query, answer,
+            datetime.now().isoformat(),
+            tokens, cost, execution_time
+        ))
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'answer': answer,
+            'tokens_used': tokens,
+            'cost': round(cost, 6),
+            'execution_time_ms': execution_time
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/voice/history')
+@login_required
+def api_voice_history():
+    """Get voice query history"""
+    limit = request.args.get('limit', 20, type=int)
+
+    conn = get_db_connection()
+    queries = conn.execute('''
+        SELECT * FROM voice_queries
+        WHERE user_id = ?
+        ORDER BY timestamp DESC
+        LIMIT ?
+    ''', (session['user_id'], limit)).fetchall()
+    conn.close()
+
+    return jsonify({
+        'queries': [dict(q) for q in queries]
+    })
+
 if __name__ == '__main__':
     import socket
 
