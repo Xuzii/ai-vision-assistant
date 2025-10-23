@@ -945,6 +945,41 @@ Current date/time: {datetime.now().strftime('%Y-%m-%d %I:%M %p')}
             'error': str(e)
         }), 500
 
+@app.route('/api/voice/transcribe', methods=['POST'])
+@login_required
+def api_voice_transcribe():
+    """Transcribe audio to text using Whisper"""
+    if 'audio' not in request.files:
+        return jsonify({'success': False, 'error': 'No audio file'}), 400
+
+    audio_file = request.files['audio']
+
+    # Save temporarily
+    temp_path = Path('temp') / f"audio_{datetime.now().timestamp()}.wav"
+    temp_path.parent.mkdir(exist_ok=True)
+    audio_file.save(temp_path)
+
+    try:
+        # Initialize OpenAI client
+        client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+
+        with open(temp_path, 'rb') as f:
+            transcript = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=f
+            )
+
+        temp_path.unlink()  # Delete temp file
+
+        return jsonify({
+            'success': True,
+            'text': transcript.text
+        })
+    except Exception as e:
+        if temp_path.exists():
+            temp_path.unlink()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/voice/history')
 @login_required
 def api_voice_history():
