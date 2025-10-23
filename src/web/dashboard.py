@@ -180,12 +180,11 @@ def auth_status():
 @app.route('/api/activities')
 @login_required
 def api_activities():
-    """Get activities with filtering including category"""
+    """Get activities with filtering"""
     # Get query parameters
     limit = request.args.get('limit', 100, type=int)
     offset = request.args.get('offset', 0, type=int)
     camera = request.args.get('camera', None)
-    category = request.args.get('category', None)  # NEW: Category filter
     date_from = request.args.get('from', None)
     date_to = request.args.get('to', None)
     search = request.args.get('search', None)
@@ -199,10 +198,6 @@ def api_activities():
     if camera:
         query += ' AND camera_name = ?'
         params.append(camera)
-
-    if category and category != 'All':  # NEW: Category filtering
-        query += ' AND category = ?'
-        params.append(category)
 
     if date_from:
         query += ' AND timestamp >= ?'
@@ -228,9 +223,6 @@ def api_activities():
     if camera:
         count_query += ' AND camera_name = ?'
         count_params.append(camera)
-    if category and category != 'All':  # NEW: Category filtering in count
-        count_query += ' AND category = ?'
-        count_params.append(category)
     if date_from:
         count_query += ' AND timestamp >= ?'
         count_params.append(date_from)
