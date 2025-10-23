@@ -132,6 +132,129 @@ def setup_database(db_path='activities.db'):
         )
     ''')
 
+    # Persons table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS persons (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
+            description TEXT,
+            face_encoding BLOB,
+            created_at TEXT NOT NULL,
+            last_seen TEXT,
+            is_active INTEGER DEFAULT 1
+        )
+    ''')
+
+    # Tracked objects table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS tracked_objects (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
+            category TEXT NOT NULL,
+            description TEXT,
+            last_seen_location TEXT,
+            last_seen_timestamp TEXT,
+            confidence REAL,
+            status TEXT DEFAULT 'unknown',
+            image_path TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT
+        )
+    ''')
+
+    # Object detections table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS object_detections (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            object_id INTEGER NOT NULL,
+            camera_name TEXT NOT NULL,
+            room TEXT,
+            timestamp TEXT NOT NULL,
+            confidence REAL,
+            bbox_x INTEGER,
+            bbox_y INTEGER,
+            bbox_width INTEGER,
+            bbox_height INTEGER,
+            image_path TEXT,
+            FOREIGN KEY (object_id) REFERENCES tracked_objects(id)
+        )
+    ''')
+
+    # Camera status table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS camera_status (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            camera_name TEXT UNIQUE NOT NULL,
+            is_connected INTEGER DEFAULT 0,
+            last_successful_connection TEXT,
+            last_failed_connection TEXT,
+            consecutive_failures INTEGER DEFAULT 0,
+            error_message TEXT,
+            updated_at TEXT NOT NULL
+        )
+    ''')
+
+    # Cost settings table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS cost_settings (
+            id INTEGER PRIMARY KEY,
+            daily_cap REAL DEFAULT 2.00,
+            notification_threshold REAL DEFAULT 1.50,
+            warning_sent_today INTEGER DEFAULT 0,
+            last_reset_date TEXT,
+            updated_at TEXT
+        )
+    ''')
+
+    # Insert default cost settings
+    cursor.execute('''
+        INSERT OR IGNORE INTO cost_settings (id, daily_cap, notification_threshold, last_reset_date, updated_at)
+        VALUES (1, 2.00, 1.50, date('now'), ?)
+    ''', (datetime.now().isoformat(),))
+
+    # User settings table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user_settings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER UNIQUE NOT NULL,
+            dark_mode INTEGER DEFAULT 0,
+            refresh_interval INTEGER DEFAULT 30000,
+            notifications_enabled INTEGER DEFAULT 1,
+            voice_output_enabled INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    ''')
+
+    # User streaks table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user_streaks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER UNIQUE NOT NULL,
+            current_streak INTEGER DEFAULT 0,
+            longest_streak INTEGER DEFAULT 0,
+            last_activity_date TEXT,
+            updated_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    ''')
+
+    # Voice queries table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS voice_queries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            query_text TEXT NOT NULL,
+            response_text TEXT,
+            timestamp TEXT NOT NULL,
+            tokens_used INTEGER,
+            cost REAL,
+            execution_time_ms INTEGER,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    ''')
+
     # Create indexes for performance (CRITICAL for fast queries!)
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_activities_timestamp ON activities(timestamp DESC)')  # DESC for recent-first queries
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_activities_camera ON activities(camera_name)')
@@ -139,6 +262,10 @@ def setup_database(db_path='activities.db'):
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_activities_activity ON activities(activity)')  # For activity-based filtering
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(session_token)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_object_detections_object_id ON object_detections(object_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_object_detections_timestamp ON object_detections(timestamp DESC)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_voice_queries_user_id ON voice_queries(user_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_voice_queries_timestamp ON voice_queries(timestamp DESC)')
 
     conn.commit()
 
