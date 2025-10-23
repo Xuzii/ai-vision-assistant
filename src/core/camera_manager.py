@@ -187,31 +187,41 @@ class CameraManager:
         return base64.b64encode(buffer).decode('utf-8')
     
     def analyze_frame(self, frame, camera_name):
-        """Send frame to GPT-4o-mini for analysis"""
+        """Send frame to GPT-4o-mini for analysis with categorization"""
         base64_image = self.encode_image(frame)
 
-        prompt = f"""You are a life-tracking assistant analyzing footage from a {camera_name} camera. Your goal is to track BOTH where the person is AND what they're doing.
+        prompt = f"""You are a life-tracking assistant analyzing footage from a {camera_name} camera. Your goal is to track where the person is, what they're doing, AND categorize the activity.
 
 Provide a structured response in this EXACT format:
 Room: [room name - be specific: living_room, kitchen, bedroom, home_office, bathroom, etc.]
 Activity: [what is the person doing - be specific and action-oriented]
 Details: [comprehensive details about the person's location, activity, posture, what they're interacting with, context clues]
+Category: [Productivity/Health/Entertainment/Social/Other]
+Confidence: [0.0-1.0]
+
+CATEGORIES:
+- Productivity: Working, typing, meetings, studying, focused tasks, video calls
+- Health: Exercise, yoga, running, stretching, physical activity
+- Entertainment: TV, games, movies, relaxing, reading for leisure
+- Social: Conversations, meals together, gatherings, interactions with others
+- Other: Cooking, cleaning, eating alone, sleeping, getting ready
 
 IMPORTANT GUIDELINES:
 1. LOCATION IS CRITICAL - Always identify which room/area the person is in
 2. PERSON FOCUS - Describe their actions, position, and what they're doing
-3. If person is NOT visible, note "Person not visible" and describe room state
-4. Be specific about activities AND location: "sitting at kitchen table eating breakfast", "standing at stove cooking dinner", "on couch in living room watching TV"
-5. Include spatial context: where in the room (at desk, on couch, at counter, in bed, etc.)
-6. Describe posture and engagement: sitting, standing, lying down, focused, relaxed, etc.
-7. Note objects and their location: "laptop on desk", "food on kitchen counter", "remote on couch"
+3. CATEGORIZE the activity based on the primary purpose
+4. Confidence should be 0.7-0.95 (0.7=uncertain, 0.8-0.85=likely, 0.9-0.95=very confident)
+5. If person is NOT visible, note "Person not visible" and use Category: Other, Confidence: 0.5
+6. Be specific about activities AND location: "sitting at kitchen table eating breakfast", "standing at stove cooking dinner"
+7. Include spatial context: where in the room (at desk, on couch, at counter, in bed, etc.)
+8. Describe posture and engagement: sitting, standing, lying down, focused, relaxed, etc.
 
 Examples:
-- Good: "Room: home_office, Activity: Working on laptop at desk, Details: Person sitting upright at desk in home office, focused on laptop screen, coffee mug on right side of desk, wearing headphones, appears engaged in work"
-- Bad: "Room: home_office, Activity: Working, Details: Using computer"
-- Good: "Room: kitchen, Activity: Cooking dinner at stove, Details: Person standing at stove in kitchen, stirring pot with wooden spoon, ingredients visible on counter to the left, appears focused on cooking"
+- "Room: home_office, Activity: Working on laptop at desk, Details: Person sitting upright at desk in home office, focused on laptop screen, coffee mug on right side of desk, wearing headphones, appears engaged in work, Category: Productivity, Confidence: 0.95"
+- "Room: kitchen, Activity: Cooking dinner at stove, Details: Person standing at stove in kitchen, stirring pot with wooden spoon, ingredients visible on counter to the left, appears focused on cooking, Category: Other, Confidence: 0.9"
+- "Room: living_room, Activity: Watching TV, Details: Person sitting on couch in living room, remote in hand, relaxed posture with legs stretched out, appears engaged with TV screen, Category: Entertainment, Confidence: 0.9"
 
-Track WHERE the person is (room + specific location) AND WHAT they're doing (activity + details)."""
+Track WHERE the person is (room + specific location), WHAT they're doing (activity + details), and HOW to categorize it."""
 
         try:
             response = self.client.chat.completions.create(
@@ -253,19 +263,30 @@ Track WHERE the person is (room + specific location) AND WHAT they're doing (act
             return None, 0.0, 0, 0
     
     def parse_response(self, response_text):
-        """Parse AI response into structured data"""
+        """Parse AI response into structured data with categorization"""
         lines = response_text.strip().split('\n')
         data = {
             'room': '',
             'activity': '',
-            'details': ''
+            'details': '',
+            'category': 'Other',
+            'category_confidence': 0.5,
+            'person_name': 'Unknown'
         }
-        
+
         for line in lines:
             if line.startswith('Room:'):
                 data['room'] = line.replace('Room:', '').strip()
             elif line.startswith('Activity:'):
                 data['activity'] = line.replace('Activity:', '').strip()
+            elif line.startswith('Category:'):
+                data['category'] = line.replace('Category:', '').strip()
+            elif line.startswith('Confidence:'):
+                try:
+                    confidence_str = line.replace('Confidence:', '').strip()
+                    data['category_confidence'] = float(confidence_str)
+                except ValueError:
+                    data['category_confidence'] = 0.5
             elif line.startswith('Details:'):
                 data['details'] = line.replace('Details:', '').strip()
         
@@ -277,8 +298,8 @@ Track WHERE the person is (room + specific location) AND WHAT they're doing (act
         timestamp = datetime.now().isoformat()
 
         self.cursor.execute('''
-            INSERT INTO activities (timestamp, camera_name, room, activity, details, full_response, cost, input_tokens, output_tokens, image_path, person_detected, detection_confidence, analysis_skipped)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO activities (timestamp, camera_name, room, activity, details, full_response, cost, input_tokens, output_tokens, image_path, person_detected, detection_confidence, analysis_skipped, category, category_confidence, person_name, tokens_used)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             timestamp,
             camera_name,
@@ -292,7 +313,11 @@ Track WHERE the person is (room + specific location) AND WHAT they're doing (act
             image_path,
             1 if person_detected else 0,
             confidence,
-            0
+            0,
+            parsed.get('category', 'Other'),
+            parsed.get('category_confidence', 0.5),
+            parsed.get('person_name', 'Unknown'),
+            input_tokens + output_tokens
         ))
         self.conn.commit()
 
