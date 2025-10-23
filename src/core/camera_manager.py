@@ -99,22 +99,86 @@ class CameraManager:
         print(f"✅ Frames directory ready: {frames_dir}")
     
     def check_daily_cost_limit(self):
-        """Check if daily cost limit reached, reset if new day"""
-        current_date = datetime.now().date()
+        """Check if daily cost limit reached using database, reset if new day"""
+        conn = sqlite3.connect(self.config['database']['path'])
+        cursor = conn.cursor()
 
-        # Reset daily cost if it's a new day
-        if current_date > self.daily_cost_reset_date:
-            print(f"📅 New day detected. Resetting daily cost from ${self.daily_cost:.4f} to $0.00")
-            self.daily_cost = 0.0
-            self.daily_cost_reset_date = current_date
+        # Get cost settings from database
+        settings = cursor.execute('SELECT * FROM cost_settings WHERE id = 1').fetchone()
+        if settings:
+            daily_cap = settings[1]  # daily_cap column
+            last_reset_date = settings[4]  # last_reset_date column
+        else:
+            daily_cap = 2.00
+            last_reset_date = None
+
+        # Get today's total cost
+        today = datetime.now().replace(hour=0, minute=0, second=0).isoformat()
+        result = cursor.execute('''
+            SELECT COALESCE(SUM(cost), 0) as total
+            FROM activities
+            WHERE timestamp >= ?
+        ''', (today,)).fetchone()
+
+        daily_spent = result[0] if result else 0.0
+
+        # Check if new day - reset warning flag
+        current_date = datetime.now().date().isoformat()
+        if last_reset_date != current_date:
+            cursor.execute('''
+                UPDATE cost_settings
+                SET last_reset_date = ?,
+                    warning_sent_today = 0
+                WHERE id = 1
+            ''', (current_date,))
+            conn.commit()
+            print(f"📅 New day detected. Daily cost: ${daily_spent:.4f} / ${daily_cap:.2f}")
+
+        conn.close()
 
         # Check if we've hit the daily cost cap
-        if self.daily_cost >= self.daily_cost_cap:
-            print(f"⚠️  Daily cost cap of ${self.daily_cost_cap:.2f} reached (current: ${self.daily_cost:.4f})")
+        if daily_spent >= daily_cap:
+            print(f"⚠️  Daily cost cap of ${daily_cap:.2f} reached (current: ${daily_spent:.4f})")
             print(f"⚠️  Skipping analysis to prevent API runaway. Will resume tomorrow.")
             return False
 
         return True
+
+    def update_camera_status(self, camera_name, is_connected, error_message=None):
+        """Update camera connection status in database"""
+        conn = sqlite3.connect(self.config['database']['path'])
+        cursor = conn.cursor()
+
+        timestamp = datetime.now().isoformat()
+
+        # Get existing status
+        existing = cursor.execute('''
+            SELECT consecutive_failures FROM camera_status
+            WHERE camera_name = ?
+        ''', (camera_name,)).fetchone()
+
+        if is_connected:
+            # Success
+            cursor.execute('''
+                INSERT OR REPLACE INTO camera_status (
+                    camera_name, is_connected,
+                    last_successful_connection, consecutive_failures,
+                    error_message, updated_at
+                ) VALUES (?, 1, ?, 0, NULL, ?)
+            ''', (camera_name, timestamp, timestamp))
+        else:
+            # Failure
+            failures = (existing[0] + 1) if existing else 1
+
+            cursor.execute('''
+                INSERT OR REPLACE INTO camera_status (
+                    camera_name, is_connected, last_failed_connection,
+                    consecutive_failures, error_message, updated_at
+                ) VALUES (?, 0, ?, ?, ?, ?)
+            ''', (camera_name, timestamp, failures, error_message, timestamp))
+
+        conn.commit()
+        conn.close()
 
     def is_within_active_hours(self, active_hours):
         """Check if current time is within camera's active hours"""
@@ -148,6 +212,8 @@ class CameraManager:
                 print(f"❌ Max retries ({self.max_retries}) reached for {camera_name}. Connection failed.")
                 self.camera_retry_counts[camera_name] = self.camera_retry_counts.get(camera_name, 0) + 1
                 print(f"📊 Total connection failures for {camera_name}: {self.camera_retry_counts[camera_name]}")
+                # Update database status
+                self.update_camera_status(camera_name, False, "Cannot connect to camera")
                 return None
 
         # Read frame
@@ -162,12 +228,17 @@ class CameraManager:
                 return self.capture_frame(camera_config, retry_count + 1)
             else:
                 print(f"❌ Max retries ({self.max_retries}) reached for {camera_name}. Frame capture failed.")
+                # Update database status
+                self.update_camera_status(camera_name, False, "Failed to read frame from camera")
                 return None
 
         # Success - reset retry counter
         if camera_name in self.camera_retry_counts:
             print(f"✅ Camera {camera_name} reconnected successfully after {self.camera_retry_counts[camera_name]} previous failures")
             del self.camera_retry_counts[camera_name]
+
+        # Update database status - connection successful
+        self.update_camera_status(camera_name, True)
 
         print(f"✅ Frame captured from {camera_name}")
         return frame
