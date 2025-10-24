@@ -62,7 +62,7 @@ npm install axios
 VITE_API_BASE_URL=http://localhost:8000
 ```
 
-See **[API_DOCUMENTATION.md](API_DOCUMENTATION.md)** for complete integration guide with React examples!
+See **[API Reference](docs/API_REFERENCE.md)** for complete integration guide with React examples!
 
 ---
 
@@ -117,10 +117,23 @@ ai-vision-assistant/
 
 ## 📖 Documentation
 
-- **[API Documentation](API_DOCUMENTATION.md)** - 📘 Complete API reference for React integration
-- **[Complete Guide](docs/README.md)** - Full setup, features, troubleshooting
-- **[Activity Detection](docs/ACTIVITY_DETECTION.md)** - Smart cost optimization with YOLOv8
-- **[Quick Reference](docs/QUICK_REFERENCE.md)** - Commands and Tailscale access
+**Complete documentation is in the [docs](docs/) folder:**
+
+- **[Complete Documentation](docs/README.md)** - Main documentation hub with all features
+- **[API Reference](docs/API_REFERENCE.md)** - RESTful API for React integration
+- **[Quick Reference](docs/QUICK_REFERENCE.md)** - Common commands and Tailscale setup
+
+**Feature-specific guides:**
+- [Activity Detection & YOLOv8](docs/features/ACTIVITY_DETECTION.md)
+- [Person Tracking & Face Recognition](docs/features/PERSON_TRACKING.md)
+- [Cost Monitoring](docs/features/COST_MONITORING.md)
+- [Voice Queries](docs/features/VOICE_QUERIES.md)
+- [Camera Management](docs/features/CAMERA_MANAGEMENT.md)
+- [Live Streaming](docs/features/LIVE_STREAMING.md)
+
+**For developers:**
+- [Implementation Guide](docs/IMPLEMENTATION_GUIDE.md)
+- [Implementation Summary](docs/IMPLEMENTATION_SUMMARY.md)
 
 ---
 
