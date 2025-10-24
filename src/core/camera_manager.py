@@ -16,6 +16,7 @@ import os
 from openai import OpenAI
 from dotenv import load_dotenv
 from activity_detector import ActivityDetector
+from person_identifier import PersonIdentifier
 
 # Load environment variables
 load_dotenv()
@@ -36,6 +37,9 @@ class CameraManager:
 
         # Initialize activity detector for cost optimization
         self.activity_detector = ActivityDetector(self.config)
+
+        # Initialize person identifier for continuous learning
+        self.person_identifier = PersonIdentifier()
         
     def load_config(self, config_path):
         """Load configuration from JSON file"""
@@ -364,13 +368,36 @@ Track WHERE the person is (room + specific location), WHAT they're doing (activi
         return data
     
     def log_activity(self, camera_name, response_text, cost, input_tokens, output_tokens, image_path, person_detected=True, confidence=1.0):
-        """Log activity to database"""
+        """Log activity to database with person identification"""
         parsed = self.parse_response(response_text)
         timestamp = datetime.now().isoformat()
 
+        # Identify person using face recognition (with auto-learning enabled)
+        person_name = 'Unknown'
+        person_id = None
+
+        if person_detected and image_path:
+            try:
+                result = self.person_identifier.detect_and_identify(
+                    image_path,
+                    auto_learn=True  # Enable continuous learning
+                )
+
+                if result['faces_found'] > 0:
+                    # Use first identified person (usually only one person in frame)
+                    identification = result['identifications'][0]
+                    if identification['person_id'] is not None:
+                        person_name = identification['person_name']
+                        person_id = identification['person_id']
+                        print(f"  👤 Identified: {person_name} (confidence: {identification['confidence']:.2f})")
+                    else:
+                        print(f"  👤 Unknown person detected (quality: {identification.get('quality_score', 0):.2f})")
+            except Exception as e:
+                print(f"  ⚠️  Person identification failed: {e}")
+
         self.cursor.execute('''
-            INSERT INTO activities (timestamp, camera_name, room, activity, details, full_response, cost, input_tokens, output_tokens, image_path, person_detected, detection_confidence, analysis_skipped, category, category_confidence, person_name, tokens_used)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO activities (timestamp, camera_name, room, activity, details, full_response, cost, input_tokens, output_tokens, image_path, person_detected, detection_confidence, analysis_skipped, category, category_confidence, person_name, person_id, tokens_used)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             timestamp,
             camera_name,
@@ -387,7 +414,8 @@ Track WHERE the person is (room + specific location), WHAT they're doing (activi
             0,
             parsed.get('category', 'Other'),
             parsed.get('category_confidence', 0.5),
-            parsed.get('person_name', 'Unknown'),
+            person_name,
+            person_id,
             input_tokens + output_tokens
         ))
         self.conn.commit()
