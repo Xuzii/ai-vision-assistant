@@ -1225,6 +1225,170 @@ def api_activity_identify_person(activity_id):
         'identifications': result['identifications']
     })
 
+# ==================== Object Tracking API ====================
+
+@app.route('/api/objects')
+@login_required
+def api_objects_list():
+    """Get all tracked objects"""
+    conn = get_db_connection()
+    objects = conn.execute('''
+        SELECT * FROM tracked_objects
+        ORDER BY
+            CASE status
+                WHEN 'missing' THEN 0
+                WHEN 'present' THEN 1
+                ELSE 2
+            END,
+            last_seen_timestamp DESC
+    ''').fetchall()
+    conn.close()
+
+    return jsonify({
+        'objects': [dict(obj) for obj in objects]
+    })
+
+@app.route('/api/objects/<int:object_id>')
+@login_required
+def api_object_detail(object_id):
+    """Get object details with history"""
+    conn = get_db_connection()
+
+    obj = conn.execute('''
+        SELECT * FROM tracked_objects WHERE id = ?
+    ''', (object_id,)).fetchone()
+
+    history = conn.execute('''
+        SELECT * FROM object_detections
+        WHERE object_id = ?
+        ORDER BY timestamp DESC
+        LIMIT 50
+    ''', (object_id,)).fetchall()
+
+    conn.close()
+
+    return jsonify({
+        'object': dict(obj) if obj else None,
+        'history': [dict(h) for h in history]
+    })
+
+@app.route('/api/objects', methods=['POST'])
+@login_required
+def api_objects_create():
+    """Manually add an object to track"""
+    data = request.json
+
+    conn = get_db_connection()
+    cursor = conn.execute('''
+        INSERT INTO tracked_objects (
+            name, category, description,
+            status, created_at, updated_at
+        ) VALUES (?, ?, ?, 'unknown', ?, ?)
+    ''', (
+        data['name'],
+        data['category'],
+        data.get('description', ''),
+        datetime.now().isoformat(),
+        datetime.now().isoformat()
+    ))
+
+    object_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+
+    return jsonify({'success': True, 'id': object_id})
+
+# ==================== Room Mapping API ====================
+
+@app.route('/api/rooms')
+@login_required
+def api_rooms_list():
+    """Get list of rooms with stats"""
+    conn = get_db_connection()
+
+    # Get unique rooms from activities
+    rooms = conn.execute('''
+        SELECT DISTINCT room
+        FROM activities
+        WHERE room IS NOT NULL AND room != ''
+    ''').fetchall()
+
+    result = []
+    for room_row in rooms:
+        room = room_row['room']
+
+        # Get object count in this room
+        object_count = conn.execute('''
+            SELECT COUNT(*) as count
+            FROM tracked_objects
+            WHERE last_seen_location = ?
+            AND status = 'present'
+        ''', (room,)).fetchone()['count']
+
+        # Get last activity
+        last_activity = conn.execute('''
+            SELECT timestamp, person_name, activity
+            FROM activities
+            WHERE room = ?
+            ORDER BY timestamp DESC
+            LIMIT 1
+        ''', (room,)).fetchone()
+
+        result.append({
+            'id': room.lower().replace(' ', '_'),
+            'name': room,
+            'object_count': object_count,
+            'last_activity': dict(last_activity) if last_activity else None
+        })
+
+    conn.close()
+
+    return jsonify({'rooms': result})
+
+@app.route('/api/rooms/<room_name>/status')
+@login_required
+def api_room_status(room_name):
+    """Get detailed room status"""
+    # Decode room name
+    room_name = room_name.replace('_', ' ').title()
+
+    conn = get_db_connection()
+
+    # Current occupancy (activity in last 5 minutes)
+    recent = conn.execute('''
+        SELECT person_name, activity, timestamp
+        FROM activities
+        WHERE room = ?
+        AND datetime(timestamp) > datetime('now', '-5 minutes')
+        ORDER BY timestamp DESC
+        LIMIT 1
+    ''', (room_name,)).fetchone()
+
+    # Objects in room
+    objects = conn.execute('''
+        SELECT * FROM tracked_objects
+        WHERE last_seen_location = ?
+        AND status = 'present'
+    ''', (room_name,)).fetchall()
+
+    # Recent activities
+    activities = conn.execute('''
+        SELECT * FROM activities
+        WHERE room = ?
+        ORDER BY timestamp DESC
+        LIMIT 10
+    ''', (room_name,)).fetchall()
+
+    conn.close()
+
+    return jsonify({
+        'room': room_name,
+        'occupied': recent is not None,
+        'current_occupant': dict(recent) if recent else None,
+        'objects': [dict(o) for o in objects],
+        'recent_activities': [dict(a) for a in activities]
+    })
+
 if __name__ == '__main__':
     import socket
 
