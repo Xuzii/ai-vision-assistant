@@ -145,6 +145,25 @@ def setup_database(db_path='activities.db'):
         )
     ''')
 
+    # Person face encodings table (for continuous learning)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS person_face_encodings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            person_id INTEGER NOT NULL,
+            encoding BLOB NOT NULL,
+            source_image_path TEXT,
+            quality_score REAL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (person_id) REFERENCES persons(id)
+        )
+    ''')
+
+    # Create index for faster lookups
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_person_face_encodings_person_id
+        ON person_face_encodings(person_id)
+    ''')
+
     # Tracked objects table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS tracked_objects (

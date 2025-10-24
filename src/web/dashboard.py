@@ -24,6 +24,14 @@ from openai import OpenAI
 
 load_dotenv()
 
+# Import PersonIdentifier for person tracking
+try:
+    from src.core.person_identifier import PersonIdentifier
+    person_identifier = PersonIdentifier()
+except ImportError:
+    from person_identifier import PersonIdentifier
+    person_identifier = PersonIdentifier()
+
 # Add project root to path for imports
 project_root = Path(__file__).parent.parent.parent
 if str(project_root) not in sys.path:
@@ -997,6 +1005,224 @@ def api_voice_history():
 
     return jsonify({
         'queries': [dict(q) for q in queries]
+    })
+
+# ==================== Person Tracking Endpoints ====================
+
+@app.route('/api/persons', methods=['GET'])
+@login_required
+def api_persons_list():
+    """Get list of all persons"""
+    conn = get_db_connection()
+    persons = conn.execute('''
+        SELECT
+            p.id,
+            p.name,
+            p.description,
+            p.last_seen,
+            p.is_active,
+            COUNT(pfe.id) as encoding_count
+        FROM persons p
+        LEFT JOIN person_face_encodings pfe ON p.id = pfe.person_id
+        GROUP BY p.id
+        ORDER BY p.name
+    ''').fetchall()
+    conn.close()
+
+    return jsonify({
+        'persons': [dict(p) for p in persons]
+    })
+
+@app.route('/api/persons', methods=['POST'])
+@login_required
+def api_persons_create():
+    """Create a new person"""
+    data = request.json
+    name = data.get('name')
+    description = data.get('description', '')
+
+    if not name:
+        return jsonify({'success': False, 'error': 'Name required'}), 400
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.execute('''
+            INSERT INTO persons (name, description, created_at, is_active)
+            VALUES (?, ?, ?, 1)
+        ''', (name, description, datetime.now().isoformat()))
+        conn.commit()
+        person_id = cursor.lastrowid
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'person': {'id': person_id, 'name': name}
+        })
+    except sqlite3.IntegrityError:
+        conn.close()
+        return jsonify({'success': False, 'error': 'Person already exists'}), 400
+
+@app.route('/api/persons/<int:person_id>', methods=['PUT'])
+@login_required
+def api_persons_update(person_id):
+    """Update person details"""
+    data = request.json
+
+    conn = get_db_connection()
+    conn.execute('''
+        UPDATE persons
+        SET name = ?, description = ?
+        WHERE id = ?
+    ''', (data.get('name'), data.get('description', ''), person_id))
+    conn.commit()
+    conn.close()
+
+    return jsonify({'success': True})
+
+@app.route('/api/persons/<int:person_id>', methods=['DELETE'])
+@login_required
+def api_persons_delete(person_id):
+    """Deactivate a person"""
+    conn = get_db_connection()
+    conn.execute('UPDATE persons SET is_active = 0 WHERE id = ?', (person_id,))
+    conn.commit()
+    conn.close()
+
+    return jsonify({'success': True})
+
+@app.route('/api/persons/<int:person_id>/encodings', methods=['GET'])
+@login_required
+def api_persons_encodings(person_id):
+    """Get face encoding information for a person"""
+    conn = get_db_connection()
+    encodings = conn.execute('''
+        SELECT
+            id,
+            source_image_path,
+            quality_score,
+            created_at
+        FROM person_face_encodings
+        WHERE person_id = ?
+        ORDER BY created_at DESC
+    ''', (person_id,)).fetchall()
+    conn.close()
+
+    return jsonify({
+        'person_id': person_id,
+        'encoding_count': len(encodings),
+        'encodings': [dict(e) for e in encodings]
+    })
+
+@app.route('/api/persons/<int:person_id>/clean-encodings', methods=['POST'])
+@login_required
+def api_persons_clean_encodings(person_id):
+    """Remove low-quality encodings for a person"""
+    data = request.json
+    quality_threshold = data.get('quality_threshold', 0.4)
+
+    deleted = person_identifier.remove_low_quality_encodings(
+        person_id,
+        quality_threshold
+    )
+
+    return jsonify({
+        'success': True,
+        'deleted_count': deleted,
+        'message': f'Removed {deleted} low-quality encodings'
+    })
+
+@app.route('/api/activities/<int:activity_id>/tag-person', methods=['POST'])
+@login_required
+def api_activity_tag_person(activity_id):
+    """
+    Tag an activity with a person and train the model.
+    This enables continuous learning from manual tagging.
+    """
+    data = request.json
+    person_name = data.get('person_name')
+
+    if not person_name:
+        return jsonify({'success': False, 'error': 'person_name required'}), 400
+
+    conn = get_db_connection()
+
+    # Get or create person
+    person = conn.execute('SELECT id FROM persons WHERE name = ?', (person_name,)).fetchone()
+    if not person:
+        cursor = conn.execute('''
+            INSERT INTO persons (name, created_at, is_active)
+            VALUES (?, ?, 1)
+        ''', (person_name, datetime.now().isoformat()))
+        person_id = cursor.lastrowid
+        conn.commit()
+    else:
+        person_id = person['id']
+
+    # Update activity
+    conn.execute('''
+        UPDATE activities
+        SET person_name = ?, person_id = ?
+        WHERE id = ?
+    ''', (person_name, person_id, activity_id))
+
+    # Update person last_seen
+    activity = conn.execute('SELECT timestamp FROM activities WHERE id = ?', (activity_id,)).fetchone()
+    if activity:
+        conn.execute('''
+            UPDATE persons
+            SET last_seen = ?
+            WHERE id = ?
+        ''', (activity['timestamp'], person_id))
+
+    conn.commit()
+    conn.close()
+
+    # Train the model from this activity (continuous learning)
+    result = person_identifier.train_from_activity(activity_id, person_name)
+
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'person_id': person_id,
+            'training_result': result,
+            'message': f'Tagged activity and trained model for {person_name}'
+        })
+    else:
+        # Still tag the activity even if training failed (e.g., no face detected)
+        return jsonify({
+            'success': True,
+            'person_id': person_id,
+            'training_result': result,
+            'message': f'Tagged activity as {person_name}, but training failed: {result.get("error")}'
+        })
+
+@app.route('/api/activities/<int:activity_id>/identify-person', methods=['POST'])
+@login_required
+def api_activity_identify_person(activity_id):
+    """
+    Use AI to identify the person in an activity image.
+    Returns identification results without updating the database.
+    """
+    conn = get_db_connection()
+    activity = conn.execute('''
+        SELECT image_path FROM activities WHERE id = ?
+    ''', (activity_id,)).fetchone()
+    conn.close()
+
+    if not activity or not activity['image_path']:
+        return jsonify({'success': False, 'error': 'Activity or image not found'}), 404
+
+    # Run face identification
+    result = person_identifier.detect_and_identify(
+        activity['image_path'],
+        auto_learn=False  # Don't auto-learn, just identify
+    )
+
+    return jsonify({
+        'success': True,
+        'activity_id': activity_id,
+        'faces_found': result['faces_found'],
+        'identifications': result['identifications']
     })
 
 if __name__ == '__main__':
