@@ -17,6 +17,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 from activity_detector import ActivityDetector
 from person_identifier import PersonIdentifier
+from object_tracker import ObjectTracker
 
 # Load environment variables
 load_dotenv()
@@ -40,6 +41,11 @@ class CameraManager:
 
         # Initialize person identifier for continuous learning
         self.person_identifier = PersonIdentifier()
+
+        # Initialize object tracker
+        self.object_tracker = ObjectTracker()
+        self.object_tracking_counter = 0  # Track when to run object detection
+        self.object_tracking_interval = 2  # Run every 2-3 captures
         
     def load_config(self, config_path):
         """Load configuration from JSON file"""
@@ -469,6 +475,27 @@ Track WHERE the person is (room + specific location), WHAT they're doing (activi
 
         # Save frame
         image_path = self.save_frame(frame, camera_name)
+
+        # Object tracking (every 2-3 captures to reduce overhead)
+        self.object_tracking_counter += 1
+        if self.object_tracking_counter >= self.object_tracking_interval:
+            self.object_tracking_counter = 0
+            try:
+                detections = self.object_tracker.detect_objects(
+                    image_path,
+                    camera_name,
+                    camera_config.get('room', 'Unknown')
+                )
+                if detections:
+                    count = self.object_tracker.update_tracked_objects(detections, image_path)
+                    print(f"   📦 Detected {count} objects")
+                    # Periodically mark missing objects
+                    if self.object_tracking_counter == 0:
+                        missing = self.object_tracker.mark_missing_objects(hours=3)
+                        if missing > 0:
+                            print(f"   ⚠️  Marked {missing} objects as missing")
+            except Exception as e:
+                print(f"   ⚠️  Object tracking error: {e}")
 
         # Smart detection: should we analyze this frame?
         should_analyze, reason, details = self.activity_detector.should_analyze(frame, camera_name)
